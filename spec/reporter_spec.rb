@@ -125,6 +125,23 @@ RSpec.describe Straycall::Reporter do
     supervisor_socket&.close unless supervisor_socket&.closed?
   end
 
+  it "does not fill the reporter socket with examples" do
+    supervisor_socket, target_socket = UNIXSocket.pair
+    reporter = Straycall::Reporter::ThreadReporter.new(target_socket).start
+
+    writer = Thread.new do
+      10_000.times { |line| reporter.notify_example(file: "spec/example_spec.rb", line:, description: "works") }
+    end
+
+    expect(writer.join(1)).to equal(writer)
+    expect(Straycall::Reporter::Client.new(supervisor_socket).example)
+      .to eq(file: "spec/example_spec.rb", line: 9_999, description: "works")
+  ensure
+    reporter&.stop
+    supervisor_socket&.close unless supervisor_socket&.closed?
+    writer&.join
+  end
+
   it "symbolizes an instruction pointer from proc maps" do
     maps = "7f000000-7f001000 r-xp 00001000 00:00 0 /tmp/foo_ext.so\n"
 

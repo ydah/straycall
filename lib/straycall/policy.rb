@@ -7,17 +7,20 @@ module Straycall
     module_function
 
     FILESYSTEM_NOTIFY = %i[openat openat2 unlinkat renameat renameat2 mkdirat].freeze
-    LEGACY_FILESYSTEM_NOTIFY = %i[unlink rename mkdir].freeze
+    LEGACY_FILESYSTEM_NOTIFY = %i[open creat unlink rename mkdir].freeze
     EXEC_NOTIFY = %i[execve execveat].freeze
 
     def seccomp(config)
       notified = notification_names(config)
       validate_notified!(*notified)
 
-      conditional_openat = notified.include?(:openat) && !config.filesystem.read_denials?
+      conditional = []
+      conditional << :openat if notified.include?(:openat) && !config.filesystem.read_denials?
+      conditional << :open if notified.include?(:open) && !config.filesystem.read_denials?
       Seccomp::Notify::Policy.new(deny_io_uring: !config.io_uring_allowed?) do
-        notify(*(conditional_openat ? notified - [:openat] : notified))
-        notify_if(:openat, argument: 2, mask: Policy::Filesystem::WRITE_FLAGS) if conditional_openat
+        notify(*(notified - conditional))
+        notify_if(:openat, argument: 2, mask: Policy::Filesystem::WRITE_FLAGS) if conditional.include?(:openat)
+        notify_if(:open, argument: 1, mask: Policy::Filesystem::WRITE_FLAGS) if conditional.include?(:open)
         deny :ptrace
       end
     end

@@ -96,8 +96,8 @@ module Straycall
     end
 
     def report_path=(value)
-      unless value.nil? || (value.is_a?(String) && !value.empty?)
-        raise ConfigurationError, "report_path must be a non-empty string or nil"
+      unless value.nil? || (value.is_a?(String) && !value.empty? && !value.include?("\0"))
+        raise ConfigurationError, "report_path must be a non-empty string without NUL bytes or nil"
       end
 
       @report_path = value

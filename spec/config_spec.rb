@@ -51,6 +51,16 @@ RSpec.describe Straycall::Config do
     expect { config.report_path = "" }.to raise_error(Straycall::ConfigurationError)
   end
 
+  it "rejects paths that could become accidental broad permissions" do
+    expect { config.allow_write_under(nil) }.to raise_error(Straycall::ConfigurationError)
+    expect { config.deny_read("") }.to raise_error(Straycall::ConfigurationError)
+    expect { config.allow_unix("bad\0path") }.to raise_error(Straycall::ConfigurationError)
+    expect { config.allow_host(nil) }.to raise_error(Straycall::ConfigurationError)
+    expect { config.allow_exec("") }.to raise_error(Straycall::ConfigurationError)
+    expect { config.deny_exec("bad\0path") }.to raise_error(Straycall::ConfigurationError)
+    expect { config.report_path = "bad\0path" }.to raise_error(Straycall::ConfigurationError)
+  end
+
   it "reports host resolution failures as configuration errors" do
     allow(Addrinfo).to receive(:getaddrinfo).and_raise(SocketError, "not found")
 

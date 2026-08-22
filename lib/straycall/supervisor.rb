@@ -70,6 +70,13 @@ module Straycall
       supervisor.on(:renameat) { |request| handle_rename(request, *request.args.values_at(0, 1, 2, 3)) } if names.include?(:renameat)
       supervisor.on(:renameat2) { |request| handle_rename(request, *request.args.values_at(0, 1, 2, 3)) } if names.include?(:renameat2)
       cwd = Policy::Filesystem::AT_FDCWD
+      supervisor.on(:open) { |request| handle_open(request, cwd, request.args[0], request.args[1]) } if names.include?(:open)
+      if names.include?(:creat)
+        supervisor.on(:creat) do |request|
+          flags = Fcntl::O_WRONLY | Fcntl::O_CREAT | Fcntl::O_TRUNC
+          handle_open(request, cwd, request.args[0], flags)
+        end
+      end
       supervisor.on(:unlink) { |request| handle_path_mutation(request, cwd, request.args[0]) } if names.include?(:unlink)
       supervisor.on(:mkdir) { |request| handle_path_mutation(request, cwd, request.args[0]) } if names.include?(:mkdir)
       supervisor.on(:rename) { |request| handle_rename(request, cwd, request.args[0], cwd, request.args[1]) } if names.include?(:rename)
@@ -156,8 +163,8 @@ module Straycall
     def handle_sendmmsg(request)
       return request.continue! if @config.network.allow_all? && @config.on_violation != :record
 
-      count = request.args[2]
-      return request.continue! if count.zero? || count > MAX_MMSG
+      count = [request.args[2], MAX_MMSG].min
+      return request.continue! if count.zero?
 
       destinations = count.times.filter_map do |index|
         name, length = request.read(request.args[1] + index * MMSGHDR_SIZE, 12).unpack("Q<L<")
@@ -189,12 +196,12 @@ module Straycall
       backtrace = @reporter&.backtrace(request.tid) if first && @config.report_backtrace
       origin = Reporter::Symbolizer.call(request.tid, request.instruction_pointer) unless backtrace
       violation = Violation.new(request.syscall, request.tid, target, backtrace, @reporter&.example, action, suggestion, origin)
-      @mutex.synchronize do
-        violations << violation
-        write_report
-      end
-      @console.violation(violation)
+      @mutex.synchronize { violations << violation }
       @reporter&.notify_violation if denied
+      @mutex.synchronize do
+        write_report
+        @console.violation(violation)
+      end
       denied ? request.error!(Errno::EPERM) : request.continue!(unsafe: true) if respond
       denied
     end

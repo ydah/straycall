@@ -30,6 +30,23 @@ RSpec.describe "Linux supervision" do
     end
   end
 
+  it "returns failure when prompt mode denies a rescued violation" do
+    executable = File.expand_path("../exe/straycall", __dir__)
+    _output, _error, status = Open3.capture3(
+      clean_ruby_env,
+      RbConfig.ruby,
+      executable,
+      "--prompt",
+      "--",
+      RbConfig.ruby,
+      "-rsocket",
+      "-e",
+      'TCPSocket.new("127.0.0.1", 9) rescue Errno::EPERM'
+    )
+
+    expect(status.exitstatus).to eq(1)
+  end
+
   it "denies writes outside configured roots" do
     Dir.mktmpdir do |directory|
       config = Straycall::Config.new
@@ -67,6 +84,33 @@ RSpec.describe "Linux supervision" do
     expect(status).not_to be_success
     expect(violations.map(&:syscall)).to include(:openat2)
     expect(violations.map { |item| item.target[:path] }).to include("/tmp/straycall-openat2")
+  end
+
+  it "denies legacy x86 open and creat writes outside configured roots" do
+    skip "legacy filesystem syscalls are x86_64 only" unless RUBY_PLATFORM.include?("x86_64")
+
+    {open: 2, creat: 85}.each do |name, number|
+      config = Straycall::Config.new
+      config.deny_write_elsewhere!
+      second, third = name == :open ? ["Fcntl::O_WRONLY | Fcntl::O_CREAT | Fcntl::O_TRUNC", "0o600"] : ["0o600", "0"]
+      script = <<~RUBY
+        require "fiddle"
+        require "fcntl"
+        path = Fiddle::Pointer["/tmp/straycall-legacy-#{name}\0"]
+        syscall = Fiddle::Function.new(
+          Fiddle.dlopen(nil)["syscall"],
+          [Fiddle::TYPE_LONG, Fiddle::TYPE_VOIDP, Fiddle::TYPE_LONG, Fiddle::TYPE_LONG],
+          Fiddle::TYPE_LONG
+        )
+        result = syscall.call(#{number}, path, #{second}, #{third})
+        raise SystemCallError.new("#{name}", Fiddle.last_error) if result.negative?
+      RUBY
+
+      status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+      expect(status).not_to be_success
+      expect(violations.map(&:syscall)).to include(name)
+    end
   end
 
   it "denies unlisted executables" do
@@ -226,6 +270,33 @@ RSpec.describe "Linux supervision" do
     expect(violations.map(&:syscall)).to include(:sendmmsg)
   end
 
+  it "denies sendmmsg destinations beyond the kernel batch limit" do
+    config = Straycall::Config.new
+    script = <<~'RUBY'
+      require "socket"
+      require "fiddle"
+      socket = UDPSocket.new
+      address = Socket.sockaddr_in(53, "192.0.2.1")
+      data = "x"
+      data_pointer = Fiddle::Pointer[data]
+      address_pointer = Fiddle::Pointer[address]
+      iovec = Fiddle::Pointer[[data_pointer.to_i, data.bytesize].pack("Q<Q<")]
+      header = [address_pointer.to_i, address.bytesize, iovec.to_i, 1, 0, 0, 0].pack("Q<L<x4Q<Q<Q<Q<L<x4")
+      messages = Fiddle::Pointer[(header + [0].pack("L<x4")) * 1025]
+      sendmmsg = Fiddle::Function.new(
+        Fiddle.dlopen(nil)["sendmmsg"],
+        [Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_INT],
+        Fiddle::TYPE_INT
+      )
+      raise SystemCallError.new("sendmmsg", Fiddle.last_error) if sendmmsg.call(socket.fileno, messages, 1025, 0).negative?
+    RUBY
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).not_to be_success
+    expect(violations.map(&:syscall)).to include(:sendmmsg)
+  end
+
   it "does not notify read-only openat calls under a write policy" do
     config = Straycall::Config.new
     config.deny_write_elsewhere!
@@ -267,6 +338,33 @@ RSpec.describe "Linux supervision" do
       expect(status).not_to be_success
       expect(File).to exist(report), File.read(output)
       expect(::JSON.parse(File.read(report)).dig("violations", 0, "syscall")).to eq("connect")
+    end
+  end
+
+  it "fails an RSpec suite when its violation report cannot be written" do
+    Dir.mktmpdir do |directory|
+      output = File.join(directory, "subprocess.log")
+      fixture = File.expand_path("fixtures/in_process_suite.rb", __dir__)
+      environment = {"STRAYCALL_TEST_REPORT" => "/dev/null/report.json"}
+      status = run_suite(environment, output, RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}",
+                         Gem.bin_path("rspec-core", "rspec"), fixture)
+
+      expect(status).not_to be_success
+      expect(File.read(output)).to include("syscall violations were detected")
+    end
+  end
+
+  it "fails an RSpec suite when its supervisor dies" do
+    Dir.mktmpdir do |directory|
+      report = File.join(directory, "report.json")
+      output = File.join(directory, "subprocess.log")
+      fixture = File.expand_path("fixtures/in_process_suite.rb", __dir__)
+      environment = {"STRAYCALL_TEST_REPORT" => report, "STRAYCALL_KILL_SUPERVISOR" => "1"}
+      status = run_suite(environment, output, RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}",
+                         Gem.bin_path("rspec-core", "rspec"), fixture)
+
+      expect(status).not_to be_success
+      expect(File.read(output)).to include("supervisor stopped")
     end
   end
 

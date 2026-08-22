@@ -55,6 +55,20 @@ RSpec.describe Straycall::Supervisor do
     expect(supervisor.violations.first.target).to include(host: "192.0.2.1", port: 53)
   end
 
+  it "checks every sendmmsg entry up to the kernel limit" do
+    request = request_for(
+      Addrinfo.udp("192.0.2.1", 53),
+      syscall: :sendmmsg,
+      args: [5, 100, Straycall::Supervisor::MAX_MMSG + 1, 0]
+    )
+    allow(request).to receive(:read).and_return([1, 16].pack("Q<L<"))
+
+    supervisor.send(:handle_sendmmsg, request)
+
+    expect(request).to have_received(:read).exactly(Straycall::Supervisor::MAX_MMSG).times
+    expect(request).to have_received(:error!).with(Errno::EPERM)
+  end
+
   it "records every sendmmsg destination before continuing it" do
     config.on_violation = :record
     request = request_for(nil, syscall: :sendmmsg, args: [5, 100, 2, 0])

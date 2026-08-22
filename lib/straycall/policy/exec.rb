@@ -10,6 +10,7 @@ module Straycall
       end
 
       def allow(path)
+        validate_path!(path)
         @allowed << File.expand_path(path)
       end
 
@@ -18,6 +19,7 @@ module Straycall
       end
 
       def deny(path)
+        validate_path!(path)
         @denied << File.expand_path(path)
       end
 
@@ -28,6 +30,14 @@ module Straycall
       def allowed?(path)
         path = File.expand_path(path)
         @default == :allow ? !@denied.include?(path) : @allowed.include?(path)
+      end
+
+      private
+
+      def validate_path!(path)
+        return if path.is_a?(String) && !path.empty? && !path.include?("\0")
+
+        raise ConfigurationError, "executable paths must be non-empty strings without NUL bytes"
       end
     end
   end

@@ -32,7 +32,7 @@ straycall --record --policy-path .straycall.yml -- bundle exec rspec
 straycall --preset=bundle-install -- bundle install
 ```
 
-`--warn` and `--record` allow the syscall after reporting it. `--prompt` asks through `/dev/tty`; without a TTY it denies. The default `fail` mode returns `EPERM` and makes the CLI exit nonzero.
+`--warn` and `--record` allow the syscall after reporting it. `--prompt` asks through `/dev/tty`; without a TTY it denies. The default `fail` mode and a denied prompt return `EPERM` and make the CLI exit nonzero.
 
 ## YAML policy
 
@@ -122,4 +122,4 @@ gem build straycall.gemspec
 
 Real seccomp integration examples skip automatically outside supported Linux environments.
 
-On Linux, `ruby benchmark/require_overhead.rb` checks that read-only `openat` overhead stays below 10% across 100,000 generated require files, using the median of five alternating runs after warmup. Set `STRAYCALL_BENCHMARK_FILES` to scale the workload.
+On Linux, `ruby benchmark/require_overhead.rb` checks that read-only `openat` overhead stays below 10% across 100,000 generated require files, using the median ratio of five alternating pairs after warmup. Set `STRAYCALL_BENCHMARK_FILES` to scale the workload.

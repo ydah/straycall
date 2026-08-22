@@ -26,7 +26,7 @@ module Straycall
         require_relative "recorder"
         Recorder.new(@policy_path).write(violations)
       end
-      return 1 if violations.any? && Straycall.config.on_violation == :fail
+      return 1 if violations.any? { |violation| violation.action == :denied }
 
       child_exit_code(status)
     rescue OptionParser::ParseError, ConfigurationError => error

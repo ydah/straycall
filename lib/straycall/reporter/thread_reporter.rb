@@ -25,7 +25,7 @@ module Straycall
       end
 
       def notify_example(example)
-        write(Protocol.example(example))
+        @example = Protocol.example(example)
       end
 
       def violation?
@@ -55,6 +55,7 @@ module Straycall
             @violation = true
             write("OK\n")
           when :sync
+            write(@example) if @example
             write("OK\n")
           end
         end

@@ -15,6 +15,14 @@ RSpec.describe Straycall::Policy do
     expect(described_class.notification_names(config)).to include(:openat, :execve)
   end
 
+  it "includes legacy x86 filesystem entry points" do
+    stub_const("RUBY_PLATFORM", "x86_64-linux")
+    config = Straycall::Config.new
+    config.deny_write_elsewhere!
+
+    expect(described_class.notification_names(config)).to include(:open, :creat, :unlink, :rename, :mkdir)
+  end
+
   it "uses a conditional openat notification unless reads are denied" do
     skip "seccomp user notifications are unavailable" unless Straycall.available?
 

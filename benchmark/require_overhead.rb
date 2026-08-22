@@ -49,14 +49,19 @@ Dir.mktmpdir do |directory|
   measure.call(plain_command)
   measure.call(guarded_command)
   samples = {plain_command => [], guarded_command => []}
+  ratios = []
   5.times do |index|
     first, second = index.even? ? [plain_command, guarded_command] : [guarded_command, plain_command]
-    samples.fetch(first) << measure.call(first)
-    samples.fetch(second) << measure.call(second)
+    first_time = measure.call(first)
+    second_time = measure.call(second)
+    samples.fetch(first) << first_time
+    samples.fetch(second) << second_time
+    timings = {first => first_time, second => second_time}
+    ratios << timings.fetch(guarded_command) / timings.fetch(plain_command)
   end
   plain = samples.fetch(plain_command).sort.fetch(2)
   guarded = samples.fetch(guarded_command).sort.fetch(2)
-  overhead = ((guarded / plain) - 1) * 100
+  overhead = (ratios.sort.fetch(2) - 1) * 100
   puts format("files=%d plain=%.3fs guarded=%.3fs overhead=%.1f%%", count, plain, guarded, overhead)
   abort "overhead exceeded 10%" if overhead > 10
 end

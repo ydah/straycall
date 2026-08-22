@@ -28,10 +28,18 @@ module Straycall
       end
 
       def allow_unix(path)
+        unless path.is_a?(String) && !path.empty? && !path.include?("\0")
+          raise ConfigurationError, "Unix socket paths must be non-empty strings without NUL bytes"
+        end
+
         @unix << File.expand_path(path)
       end
 
       def allow_host(host, ports: nil)
+        unless host.is_a?(String) && !host.empty? && !host.include?("\0")
+          raise ConfigurationError, "hosts must be non-empty strings without NUL bytes"
+        end
+
         Addrinfo.getaddrinfo(host, nil, nil, Socket::SOCK_STREAM).filter_map do |address|
           add_inet(IPAddr.new(address.ip_address), ports) if address.ip?
         end

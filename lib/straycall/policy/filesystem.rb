@@ -82,7 +82,11 @@ module Straycall
       private
 
       def normalize_config_path(path)
-        File.expand_path(path.to_s)
+        unless path.is_a?(String) && !path.empty? && !path.include?("\0")
+          raise ConfigurationError, "filesystem paths must be non-empty strings without NUL bytes"
+        end
+
+        File.expand_path(path)
       end
 
       def signed(value)
