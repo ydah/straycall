@@ -47,10 +47,7 @@ module Straycall
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @timeout
         loop do
           remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          if remaining <= 0 || !IO.select([@socket], nil, nil, remaining)
-            @alive = false
-            return
-          end
+          return if remaining <= 0 || !IO.select([@socket], nil, nil, remaining)
 
           line = @socket.gets
           unless line

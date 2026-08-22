@@ -18,7 +18,9 @@ module Straycall
       private
 
       def target(value)
-        value[:type] == "unix" ? value[:path] : "#{value[:host]}:#{value[:port]}"
+        return value[:path] if %w[unix file exec].include?(value[:type])
+
+        "#{value[:host]}:#{value[:port]}"
       end
     end
   end

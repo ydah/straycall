@@ -16,8 +16,10 @@ module Straycall
       def start
         return self unless RUBY_ENGINE == "ruby" && Thread.current.respond_to?(:native_thread_id)
 
-        @thread = Thread.new { run }
+        ready = Queue.new
+        @thread = Thread.new { ready << true; run }
         @thread.name = "straycall-reporter" if @thread.respond_to?(:name=)
+        ready.pop
         self
       end
 

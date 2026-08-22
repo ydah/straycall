@@ -28,6 +28,58 @@ RSpec.describe Straycall::Supervisor do
     expect(supervisor.violations).to be_empty
   end
 
+  it "denies writes outside configured roots" do
+    config.allow_write_under("/tmp/allowed")
+    config.deny_write_elsewhere!
+    request = instance_double(
+      "Seccomp::Notify::Request",
+      args: [Straycall::Policy::Filesystem::AT_FDCWD, 1, Fcntl::O_WRONLY],
+      syscall: :openat,
+      tid: 123,
+      instruction_pointer: 0,
+      read_string: "/tmp/outside",
+      error!: nil,
+      continue!: nil
+    )
+
+    supervisor.send(:handle_openat, request)
+
+    expect(request).to have_received(:error!).with(Errno::EPERM)
+    expect(supervisor.violations.first.target[:path]).to eq("/tmp/outside")
+  end
+
+  it "continues a prompted violation when approved" do
+    config.on_violation = :prompt
+    prompt = instance_double(Straycall::Prompt, allow?: true)
+    guarded = described_class.new(config, console: Straycall::Report::Console.new(output), prompt:)
+    request = request_for(Addrinfo.tcp("192.0.2.1", 443))
+
+    guarded.send(:handle_address, request, 1, 2)
+
+    expect(request).to have_received(:continue!).with(unsafe: true)
+    expect(guarded.violations.first.action).to eq(:allowed)
+  end
+
+  it "denies an executable outside the allow list" do
+    config.allow_exec("/usr/bin/git")
+    config.deny_exec_elsewhere!
+    request = instance_double(
+      "Seccomp::Notify::Request",
+      args: [1],
+      syscall: :execve,
+      tid: 123,
+      instruction_pointer: 0,
+      read_string: "/usr/bin/curl",
+      error!: nil,
+      continue!: nil
+    )
+
+    supervisor.send(:handle_exec, request, nil, 0)
+
+    expect(request).to have_received(:error!).with(Errno::EPERM)
+    expect(supervisor.violations.first.target).to eq(type: "exec", path: "/usr/bin/curl")
+  end
+
   def request_for(address)
     instance_double(
       "Seccomp::Notify::Request",

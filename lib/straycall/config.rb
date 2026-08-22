@@ -1,16 +1,20 @@
 # frozen_string_literal: true
 
 require_relative "policy/network"
+require_relative "policy/filesystem"
+require_relative "policy/exec"
 
 module Straycall
   class Config
     MODES = %i[fail warn record prompt].freeze
 
-    attr_reader :network
+    attr_reader :network, :filesystem, :exec
     attr_accessor :report_backtrace, :report_path
 
     def initialize
       @network = Policy::Network.new
+      @filesystem = Policy::Filesystem.new
+      @exec = Policy::Exec.new
       @on_violation = :fail
       @report_backtrace = true
       @report_path = nil
@@ -30,6 +34,26 @@ module Straycall
 
     def allow_host(host, ports: nil)
       network.allow_host(host, ports:)
+    end
+
+    def allow_write_under(*paths)
+      paths.each { |path| filesystem.allow_write_under(path) }
+    end
+
+    def deny_write_elsewhere!
+      filesystem.deny_write_elsewhere!
+    end
+
+    def deny_read(*paths)
+      paths.each { |path| filesystem.deny_read(path) }
+    end
+
+    def allow_exec(*paths)
+      paths.each { |path| exec.allow(path) }
+    end
+
+    def deny_exec_elsewhere!
+      exec.deny_elsewhere!
     end
 
     def on_violation

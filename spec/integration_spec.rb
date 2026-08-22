@@ -23,4 +23,30 @@ RSpec.describe "Linux supervision" do
         .to include("-e:1")
     end
   end
+
+  it "denies writes outside configured roots" do
+    Dir.mktmpdir do |directory|
+      config = Straycall::Config.new
+      config.allow_write_under(directory)
+      config.deny_write_elsewhere!
+      status, violations = Straycall::Supervisor.new(config).run(
+        [RbConfig.ruby, "-e", 'File.write("/tmp/straycall-forbidden", "x")']
+      )
+
+      expect(status).not_to be_success
+      expect(violations.map(&:syscall)).to include(:openat)
+      expect(violations.map { |item| item.target[:path] }).to include("/tmp/straycall-forbidden")
+    end
+  end
+
+  it "denies unlisted executables" do
+    config = Straycall::Config.new
+    config.allow_exec(RbConfig.ruby)
+    config.deny_exec_elsewhere!
+    _status, violations = Straycall::Supervisor.new(config).run(
+      [RbConfig.ruby, "-e", 'exit(system("/usr/bin/true") ? 0 : 1)']
+    )
+
+    expect(violations.map { |item| item.target[:path] }).to include("/usr/bin/true")
+  end
 end

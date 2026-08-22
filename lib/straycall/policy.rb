@@ -6,14 +6,29 @@ module Straycall
 
     module_function
 
-    def seccomp(_config)
-      notified = %i[socket connect sendto]
+    FILESYSTEM_NOTIFY = %i[openat openat2 unlinkat renameat renameat2 mkdirat].freeze
+    LEGACY_FILESYSTEM_NOTIFY = %i[unlink rename mkdir].freeze
+    EXEC_NOTIFY = %i[execve execveat].freeze
+
+    def seccomp(config)
+      notified = notification_names(config)
       validate_notified!(*notified)
 
       Seccomp::Notify::Policy.new do
         notify(*notified)
         deny :ptrace
       end
+    end
+
+    def notification_names(config)
+      names = %i[socket connect sendto]
+      # ponytail: seccomp-notify 0.1 has no scalar-argument filter; use notify_if upstream before enabling filesystem guards by default.
+      if config.filesystem.active? || config.on_violation == :record
+        names.concat(FILESYSTEM_NOTIFY)
+        names.concat(LEGACY_FILESYSTEM_NOTIFY) if RUBY_PLATFORM.include?("linux") && RUBY_PLATFORM.include?("x86_64")
+      end
+      names.concat(EXEC_NOTIFY) if config.exec.active? || config.on_violation == :record
+      names
     end
 
     def validate_notified!(*names)
