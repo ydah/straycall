@@ -31,10 +31,12 @@ module Straycall
       target_socket.close_on_exec = false
       supervisor = Seccomp::Notify.spawn(Policy.seccomp(@config), concurrency: 8) do
         supervisor_socket.close
-        ENV["STRAYCALL_REPORT_FD"] = target_socket.fileno.to_s
+        environment, argv = command.first.is_a?(Hash) ? [command.first.dup, command.drop(1)] : [{}, command]
         reporter = File.expand_path("target", __dir__)
-        ENV["RUBYOPT"] = ["-r#{reporter}", ENV["RUBYOPT"]].compact.join(" ")
-        exec(*command)
+        inherited_rubyopt = environment.key?("RUBYOPT") ? environment["RUBYOPT"] : ENV["RUBYOPT"]
+        environment["STRAYCALL_REPORT_FD"] = target_socket.fileno.to_s
+        environment["RUBYOPT"] = ["-r#{reporter}", inherited_rubyopt].compact.join(" ")
+        exec(environment, *argv)
       end
       target_socket.close
       @reporter = Reporter::Client.new(supervisor_socket)
@@ -51,6 +53,7 @@ module Straycall
       supervisor.on(:socket) { |request| handle_socket(request) }
       supervisor.on(:connect) { |request| handle_address(request, 1, 2) }
       supervisor.on(:sendto) { |request| handle_address(request, 4, 5) }
+      supervisor.on(:sendmsg) { |request| handle_sendmsg(request) }
       names = Policy.notification_names(@config)
       supervisor.on(:openat) { |request| handle_openat(request) } if names.include?(:openat)
       supervisor.on(:openat2) { |request| handle_openat2(request) } if names.include?(:openat2)
@@ -75,6 +78,21 @@ module Straycall
 
     def handle_address(request, address_arg, length_arg)
       address = request.read_sockaddr(request.args[address_arg], request.args[length_arg])
+      return request.error!(Errno::EPERM) unless request.valid?
+      if @config.network.allowed?(address) && @config.on_violation != :record
+        return request.continue!(unsafe: true)
+      end
+
+      record_violation(request, target(address), suggestion(address))
+    rescue Seccomp::Notify::MemoryReadError
+      record_violation(request, {type: "unknown", host: "?", port: "?"}, nil)
+    end
+
+    def handle_sendmsg(request)
+      name, length = request.read(request.args[1], 16).unpack("Q<L<")
+      return request.continue!(unsafe: true) if name.zero? || length.zero?
+
+      address = request.read_sockaddr(name, length)
       return request.error!(Errno::EPERM) unless request.valid?
       if @config.network.allowed?(address) && @config.on_violation != :record
         return request.continue!(unsafe: true)

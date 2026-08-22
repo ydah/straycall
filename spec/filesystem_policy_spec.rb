@@ -31,10 +31,24 @@ RSpec.describe Straycall::Policy::Filesystem do
     expect(policy.resolve("tmp/../log/app.log", tid: 42, dirfd: 7)).to eq("/work/project/log/app.log")
   end
 
+  it "fails closed when the target process path cannot be resolved" do
+    policy = described_class.new
+    allow(File).to receive(:readlink).and_raise(Errno::ENOENT)
+
+    expect { policy.resolve("tmp/result", tid: 42) }.to raise_error(Straycall::PathResolutionError)
+  end
+
   it "bounds its decision cache" do
     policy = described_class.new(cache_size: 2)
     3.times { |index| policy.allowed_write?("/tmp/#{index}") }
 
     expect(policy.instance_variable_get(:@cache).length).to eq(2)
+  end
+
+  it "allows the reporter to name its thread through proc" do
+    policy = described_class.new
+    policy.deny_write_elsewhere!
+
+    expect(policy.allowed_write?("/proc/self/task/42/comm")).to be(true)
   end
 end

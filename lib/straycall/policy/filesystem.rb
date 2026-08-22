@@ -38,12 +38,18 @@ module Straycall
         @write_default == :deny || !@read_denials.empty?
       end
 
+      def read_denials?
+        !@read_denials.empty?
+      end
+
       def write?(flags)
         (flags & WRITE_FLAGS).positive?
       end
 
       def allowed_write?(path)
-        cached([:write, path]) { @write_default == :allow || @write_roots.any? { |root| under?(path, root) } }
+        cached([:write, path]) do
+          @write_default == :allow || path.match?(%r{\A/proc/(?:self|\d+)/task/\d+/comm\z}) || @write_roots.any? { |root| under?(path, root) }
+        end
       end
 
       def denied_read?(path)
@@ -59,8 +65,18 @@ module Straycall
           File.readlink("/proc/#{tid}/fd/#{signed(dirfd)}")
         end
         File.expand_path(path, base)
-      rescue Errno::ENOENT, Errno::EACCES
-        File.expand_path(path)
+      rescue Errno::ENOENT, Errno::EACCES => error
+        raise PathResolutionError, "cannot resolve target path through /proc: #{error.message}"
+      end
+
+      def marshal_dump
+        [@write_default, @write_roots, @read_denials, @cache_size]
+      end
+
+      def marshal_load(values)
+        @write_default, @write_roots, @read_denials, @cache_size = values
+        @cache = {}
+        @mutex = Mutex.new
       end
 
       private

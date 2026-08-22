@@ -9,6 +9,7 @@ module Straycall
 
       def initialize(socket, timeout: 0.2)
         @socket = socket
+        @reader = Protocol::Reader.new(socket)
         @timeout = timeout
         @mutex = Mutex.new
         @alive = true
@@ -47,9 +48,9 @@ module Straycall
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @timeout
         loop do
           remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          return if remaining <= 0 || !IO.select([@socket], nil, nil, remaining)
+          return if remaining <= 0
 
-          line = @socket.gets
+          line = @reader.read(timeout: remaining)
           unless line
             @alive = false
             return
@@ -69,9 +70,15 @@ module Straycall
         deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @timeout
         loop do
           remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          return if remaining <= 0 || !IO.select([@socket], nil, nil, remaining)
+          return if remaining <= 0
 
-          type, value = Protocol.parse(@socket.gets)
+          line = @reader.read(timeout: remaining)
+          unless line
+            @alive = false
+            return
+          end
+
+          type, value = Protocol.parse(line)
           return if type == :ack
 
           @example = value if type == :example

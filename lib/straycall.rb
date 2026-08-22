@@ -8,6 +8,7 @@ require_relative "straycall/violation"
 module Straycall
   class Error < StandardError; end
   class ConfigurationError < Error; end
+  class PathResolutionError < Error; end
 
   class << self
     attr_writer :config

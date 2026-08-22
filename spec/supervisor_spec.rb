@@ -28,6 +28,17 @@ RSpec.describe Straycall::Supervisor do
     expect(supervisor.violations).to be_empty
   end
 
+  it "denies an unconnected sendmsg destination" do
+    address = Addrinfo.udp("192.0.2.1", 53)
+    request = request_for(address, syscall: :sendmsg)
+    allow(request).to receive(:read).and_return([1, 16].pack("Q<L<") + "\0" * 4)
+
+    supervisor.send(:handle_sendmsg, request)
+
+    expect(request).to have_received(:error!).with(Errno::EPERM)
+    expect(supervisor.violations.first.syscall).to eq(:sendmsg)
+  end
+
   it "denies writes outside configured roots" do
     config.allow_write_under("/tmp/allowed")
     config.deny_write_elsewhere!
@@ -80,11 +91,11 @@ RSpec.describe Straycall::Supervisor do
     expect(supervisor.violations.first.target).to eq(type: "exec", path: "/usr/bin/curl")
   end
 
-  def request_for(address)
+  def request_for(address, syscall: :connect)
     instance_double(
       "Seccomp::Notify::Request",
       args: [0, 1, 2, 3, 4, 5],
-      syscall: :connect,
+      syscall:,
       tid: 123,
       instruction_pointer: 0,
       valid?: true,

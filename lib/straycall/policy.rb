@@ -2,7 +2,7 @@
 
 module Straycall
   module Policy
-    FORBIDDEN_NOTIFY = %i[read write ppoll poll select futex clock_nanosleep rt_sigreturn sendmsg].freeze
+    FORBIDDEN_NOTIFY = %i[read write ppoll poll select futex clock_nanosleep rt_sigreturn].freeze
 
     module_function
 
@@ -14,15 +14,16 @@ module Straycall
       notified = notification_names(config)
       validate_notified!(*notified)
 
+      conditional_openat = notified.include?(:openat) && !config.filesystem.read_denials?
       Seccomp::Notify::Policy.new do
-        notify(*notified)
+        notify(*(conditional_openat ? notified - [:openat] : notified))
+        notify_if(:openat, argument: 2, mask: Policy::Filesystem::WRITE_FLAGS) if conditional_openat
         deny :ptrace
       end
     end
 
     def notification_names(config)
-      names = %i[socket connect sendto]
-      # ponytail: seccomp-notify 0.1 has no scalar-argument filter; use notify_if upstream before enabling filesystem guards by default.
+      names = %i[socket connect sendto sendmsg]
       if config.filesystem.active? || config.on_violation == :record
         names.concat(FILESYSTEM_NOTIFY)
         names.concat(LEGACY_FILESYSTEM_NOTIFY) if RUBY_PLATFORM.include?("linux") && RUBY_PLATFORM.include?("x86_64")

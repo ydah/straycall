@@ -9,6 +9,7 @@ module Straycall
 
       def initialize(socket)
         @socket = socket
+        @reader = Protocol::Reader.new(socket)
         @write_mutex = Mutex.new
         @violation = false
       end
@@ -39,10 +40,8 @@ module Straycall
       private
 
       def run
-        buffer = String.new(capacity: 64 * 1024)
-        while (line = @socket.gets)
-          buffer.replace(line)
-          type, tid = Protocol.parse(buffer)
+        while (line = @reader.read)
+          type, tid = Protocol.parse(line)
           case type
           when :backtrace
             target = Thread.list.find { |candidate| candidate != Thread.current && candidate.native_thread_id == tid }
