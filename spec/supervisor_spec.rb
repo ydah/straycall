@@ -34,6 +34,7 @@ RSpec.describe Straycall::Supervisor do
       args: [0, 1, 2, 3, 4, 5],
       syscall: :connect,
       tid: 123,
+      instruction_pointer: 0,
       valid?: true,
       read_sockaddr: address,
       error!: nil,
