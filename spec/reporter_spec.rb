@@ -47,6 +47,40 @@ RSpec.describe Straycall::Reporter do
     supervisor_socket&.close unless supervisor_socket&.closed?
   end
 
+  it "preserves a violation after the reporter dies" do
+    supervisor_socket, target_socket = UNIXSocket.pair
+    reporter = Straycall::Reporter::ThreadReporter.new(target_socket).start
+    reporter.thread.kill.join
+    client = Straycall::Reporter::Client.new(supervisor_socket, timeout: 0.01)
+    client.backtrace(Thread.current.native_thread_id)
+
+    client.notify_violation
+
+    expect(reporter.violation?).to be(true)
+  ensure
+    reporter&.stop
+    supervisor_socket&.close unless supervisor_socket&.closed?
+  end
+
+  it "does not block when the dead reporter socket is full" do
+    supervisor_socket, target_socket = UNIXSocket.pair
+    reporter = Straycall::Reporter::ThreadReporter.new(target_socket).start
+    reporter.thread.kill.join
+    client = Straycall::Reporter::Client.new(supervisor_socket, timeout: 0.01)
+    client.backtrace(Thread.current.native_thread_id)
+    loop do
+      break if supervisor_socket.write_nonblock("x" * 4096, exception: false) == :wait_writable
+    end
+
+    writer = Thread.new { client.notify_violation }
+
+    expect(writer.join(0.1)).to equal(writer)
+  ensure
+    reporter&.stop
+    supervisor_socket&.close unless supervisor_socket&.closed?
+    writer&.join
+  end
+
   it "serializes concurrent backtrace requests" do
     supervisor_socket, target_socket = UNIXSocket.pair
     reporter = Straycall::Reporter::ThreadReporter.new(target_socket).start

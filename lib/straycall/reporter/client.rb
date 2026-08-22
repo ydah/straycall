@@ -39,11 +39,13 @@ module Straycall
       end
 
       def notify_violation
-        return unless @alive
-
         @mutex.synchronize do
-          @socket.write("VIOLATION\n")
-          read_ack
+          if @alive
+            @socket.write("VIOLATION\n")
+            read_ack
+          else
+            @socket.write_nonblock("VIOLATION\n", exception: false)
+          end
         end
       rescue IOError, SystemCallError
         @alive = false

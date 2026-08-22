@@ -12,4 +12,5 @@ All notable changes to Straycall are documented here.
 - Monitor explicit network binds and support connected destination-less UDP sends.
 - Block auto-bound listeners, unsupported socket families, and batched datagram bypasses.
 - Resolve `execveat` empty paths through their file descriptors and preserve signal exit codes.
+- Preserve in-process suite failures when the reporter thread stops responding.
 - Add automatic no-op behavior on unsupported platforms.

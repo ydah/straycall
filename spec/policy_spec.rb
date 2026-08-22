@@ -2,8 +2,8 @@
 
 RSpec.describe Straycall::Policy do
   it "rejects reporter syscalls from the notification set" do
-    expect { described_class.validate_notified!(:connect, :write) }
-      .to raise_error(Straycall::ConfigurationError, /write/)
+    expect { described_class.validate_notified!(:connect, :write, :recvfrom) }
+      .to raise_error(Straycall::ConfigurationError, /write, recvfrom/)
   end
 
   it "only enables high-volume filesystem notifications when configured" do

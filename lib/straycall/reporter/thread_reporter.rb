@@ -29,7 +29,12 @@ module Straycall
       end
 
       def violation?
-        @violation
+        return true if @violation
+
+        pending = @socket.recv_nonblock(Protocol::Reader::LIMIT, Socket::MSG_PEEK, exception: false)
+        pending.is_a?(String) && pending.match?(/(?:\A|\n)VIOLATION\n/)
+      rescue IOError, SystemCallError
+        false
       end
 
       def stop
@@ -55,8 +60,6 @@ module Straycall
         end
       rescue IOError, SystemCallError
         nil
-      ensure
-        @socket.close unless @socket.closed?
       end
 
       def write(message)

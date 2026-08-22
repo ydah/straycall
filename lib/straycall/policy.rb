@@ -2,7 +2,7 @@
 
 module Straycall
   module Policy
-    FORBIDDEN_NOTIFY = %i[read write ppoll poll select futex clock_nanosleep rt_sigreturn].freeze
+    FORBIDDEN_NOTIFY = %i[read write recvfrom ppoll poll select futex clock_nanosleep rt_sigreturn].freeze
 
     module_function
 

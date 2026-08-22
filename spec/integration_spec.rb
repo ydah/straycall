@@ -255,6 +255,21 @@ RSpec.describe "Linux supervision" do
     end
   end
 
+  it "fails an RSpec suite even after its reporter thread dies" do
+    Dir.mktmpdir do |directory|
+      report = File.join(directory, "report.json")
+      output = File.join(directory, "subprocess.log")
+      fixture = File.expand_path("fixtures/in_process_suite.rb", __dir__)
+      environment = {"STRAYCALL_TEST_REPORT" => report, "STRAYCALL_KILL_REPORTER" => "1"}
+      status = run_suite(environment, output, RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}",
+                         Gem.bin_path("rspec-core", "rspec"), fixture)
+
+      expect(status).not_to be_success
+      expect(File).to exist(report), File.read(output)
+      expect(::JSON.parse(File.read(report)).dig("violations", 0, "syscall")).to eq("connect")
+    end
+  end
+
   it "fails a Minitest suite and associates its test" do
     Dir.mktmpdir do |directory|
       report = File.join(directory, "report.json")
