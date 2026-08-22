@@ -5,7 +5,8 @@ source "https://rubygems.org"
 # Specify your gem's dependencies in straycall.gemspec
 gemspec
 
-gem "seccomp-notify", path: "../seccomp-notify"
+local_seccomp_notify = File.expand_path("../seccomp-notify", __dir__)
+gem "seccomp-notify", path: local_seccomp_notify if File.directory?(local_seccomp_notify)
 
 gem "rake", "~> 13.0"
 

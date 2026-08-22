@@ -6,6 +6,7 @@ module Straycall
       def initialize
         @default = :allow
         @allowed = []
+        @denied = []
       end
 
       def allow(path)
@@ -16,12 +17,17 @@ module Straycall
         @default = :deny
       end
 
+      def deny(path)
+        @denied << File.expand_path(path)
+      end
+
       def active?
-        @default == :deny
+        @default == :deny || !@denied.empty?
       end
 
       def allowed?(path)
-        @default == :allow || @allowed.include?(File.expand_path(path))
+        path = File.expand_path(path)
+        @default == :allow ? !@denied.include?(path) : @allowed.include?(path)
       end
     end
   end

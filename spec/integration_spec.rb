@@ -2,6 +2,7 @@
 
 require "rbconfig"
 require "tmpdir"
+require "open3"
 require "straycall/supervisor"
 
 RSpec.describe "Linux supervision" do
@@ -48,5 +49,42 @@ RSpec.describe "Linux supervision" do
     )
 
     expect(violations.map { |item| item.target[:path] }).to include("/usr/bin/true")
+  end
+
+  it "answers concurrent connect notifications without deadlocking" do
+    config = Straycall::Config.new
+    script = <<~RUBY
+      require "socket"
+      100.times.map do
+        Thread.new { TCPSocket.new("192.0.2.1", 443) rescue Errno::EPERM }
+      end.each(&:join)
+    RUBY
+
+    _status, violations = Straycall::Supervisor.new(config).run([RbConfig.ruby, "-e", script])
+
+    expect(violations.count { |item| item.syscall == :connect }).to eq(100)
+  end
+
+  it "fails an RSpec suite and associates its example" do
+    Dir.mktmpdir do |directory|
+      report = File.join(directory, "report.json")
+      suite = File.join(directory, "guarded_spec.rb")
+      File.write(suite, <<~RUBY)
+        require "straycall"
+        Straycall.config.report_path = #{report.inspect}
+        require "straycall/rspec"
+        require "socket"
+        RSpec.describe("guarded") do
+          it("connects") { TCPSocket.new("192.0.2.1", 443) rescue Errno::EPERM }
+        end
+      RUBY
+
+      _stdout, _stderr, status = Open3.capture3(
+        RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}", "-S", "rspec", suite
+      )
+
+      expect(status).not_to be_success
+      expect(::JSON.parse(File.read(report)).dig("violations", 0, "example", "description")).to include("connects")
+    end
   end
 end

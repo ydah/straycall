@@ -1,39 +1,124 @@
 # Straycall
 
-TODO: Delete this and the text below, and describe your gem
+Straycall reports and blocks unintended network, filesystem, and process access from Ruby builds and test suites. It runs an unfiltered supervisor over Linux `seccomp` user notifications and includes the responsible Ruby backtrace in its report.
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/straycall`. To experiment with that code, run `bin/console` for an interactive prompt.
+> [!WARNING]
+> Straycall detects accidents; it is not a security boundary for hostile code. Pointer-based policy checks, symbolic links, existing file descriptors, and kernel interfaces outside seccomp's reach leave intentional escape routes.
+
+On macOS, Windows, non-MRI Ruby, an unsupported kernel, or with `STRAYCALL=0`, requiring and configuring Straycall is a no-op. The wrapped command runs normally.
+
+## Requirements
+
+- Linux x86_64 or aarch64 with seccomp user notifications and `CONTINUE` (Linux 5.5+)
+- MRI Ruby 3.1+
+- `seccomp-notify` 0.1.x
+
+Container runtimes may block `seccomp(2)` in their own profile. Use an isolated container with `--security-opt seccomp=unconfined` when needed.
 
 ## Installation
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
-
-Install the gem and add to the application's Gemfile by executing:
-
-```bash
-bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+```ruby
+gem "straycall"
 ```
 
-If bundler is not being used to manage dependencies, install the gem by executing:
+## CLI (recommended)
 
-```bash
-gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+The CLI keeps the supervisor outside the filtered command, so it does not interfere with the command's `Process.wait` calls.
+
+```sh
+straycall --config .straycall.yml -- bundle exec rspec
+straycall --report-path tmp/straycall.json -- ruby script.rb
+straycall --record --policy-path .straycall.yml -- bundle exec rspec
+straycall --preset=bundle-install -- bundle install
 ```
 
-## Usage
+`--warn` and `--record` allow the syscall after reporting it. `--prompt` asks through `/dev/tty`; without a TTY it denies. The default `fail` mode returns `EPERM` and makes the CLI exit nonzero.
 
-TODO: Write usage instructions here
+## YAML policy
+
+```yaml
+network:
+  default: deny
+  allow:
+    - host: 127.0.0.1
+      ports: [5432, 6379]
+    - unix: /var/run/postgresql/.s.PGSQL.5432
+write:
+  default: deny
+  allow: [tmp, log, coverage, /tmp]
+  deny_read: [/etc/shadow, ~/.ssh, ~/.aws, ~/.gem/credentials]
+exec:
+  default: allow
+  deny: [/usr/bin/curl, /usr/bin/wget]
+on_violation: fail
+report_backtrace: true
+report_path: tmp/straycall.json
+```
+
+Hosts are resolved once while loading the configuration. Paths are expanded but symbolic links are deliberately not resolved.
+
+## Ruby configuration
+
+```ruby
+require "straycall"
+
+Straycall.configure do |config|
+  config.deny_network!
+  config.allow_loopback ports: [5432, 6379]
+  config.allow_host "registry.internal.example", ports: [443]
+  config.allow_unix "/var/run/postgresql/.s.PGSQL.5432"
+
+  config.allow_write_under "tmp", "log", "coverage", Dir.tmpdir
+  config.deny_write_elsewhere!
+  config.deny_read "/etc/shadow", "~/.ssh"
+
+  config.allow_exec "/usr/bin/git", "/usr/bin/make"
+  config.deny_exec_elsewhere!
+  config.report_path = "tmp/straycall.json"
+end
+```
+
+## RSpec and Minitest
+
+Load the integration at the top of the test helper:
+
+```ruby
+# RSpec
+require "straycall/rspec"
+
+# Minitest
+require "straycall/minitest"
+```
+
+This in-process mode starts a detached supervisor, associates violations with the current test, and checks the supervisor health pipe. Prefer the CLI if tests use broad `Process.wait` calls or fork heavily; filters are inherited and cannot be removed.
+
+## Reports
+
+Console output includes the syscall, target, current test, Ruby backtrace (MRI), a `/proc/<tid>/maps` native-library fallback, and an allow-list suggestion. `report_path` writes a versioned JSON document:
+
+```json
+{"version":1,"violations":[{"syscall":"connect","tid":123,"target":{"type":"inet","host":"192.0.2.1","port":443},"action":"denied"}]}
+```
+
+## Known limitations
+
+1. This is not a security boundary. Allowing a pointer-based syscall with `continue!` is subject to TOCTOU.
+2. vDSO calls such as normal clock reads cannot be intercepted.
+3. File descriptors opened before filter installation are outside the policy.
+4. `io_uring_setup` is denied so io_uring cannot bypass monitored syscalls.
+5. Ruby backtraces require MRI 3.1+; native calls fall back to `/proc/<tid>/maps`.
+6. Filesystem checks use the unresolved path string. A symlink can point outside an allowed root.
+7. If the supervisor dies, the kernel returns `ENOSYS`; integrations detect the health-pipe closure as soon as they regain control.
+8. `seccomp-notify` 0.1 reserves `sendmsg` to transfer its listener. Straycall covers `connect` and `sendto`, but cannot observe an unconnected `sendmsg` until the dependency supports fd-conditional notifications.
+9. `seccomp-notify` 0.1 has no argument-bit filter. When filesystem guarding is enabled, read-only `openat` calls reach the supervisor and are immediately continued; network-only use avoids this overhead.
 
 ## Development
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+```sh
+ruby -Ilib -S rspec
+gem build straycall.gemspec
+```
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+Real seccomp integration examples skip automatically outside supported Linux environments.
 
-## Contributing
-
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/straycall.
-
-## License
-
-The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+On Linux, `ruby benchmark/require_overhead.rb` measures the read-only `openat` overhead against 1,000 generated require files.

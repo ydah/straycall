@@ -18,6 +18,10 @@ module Straycall
         @default = :deny
       end
 
+      def allow!
+        @default = :allow
+      end
+
       def allow_loopback(ports: nil)
         add_inet(IPAddr.new("127.0.0.0/8"), ports)
         add_inet(IPAddr.new("::1"), ports)
@@ -34,8 +38,9 @@ module Straycall
       end
 
       def allowed?(address)
+        return true if @default == :allow
         return @unix.any? { |prefix| address.unix_path.start_with?(prefix) } if address.unix?
-        return @default == :allow unless address.ip?
+        return false unless address.ip?
 
         ip = IPAddr.new(address.ip_address.split("%", 2).first)
         @inet.any? do |rule|

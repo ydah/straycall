@@ -26,7 +26,7 @@ module Straycall
       return false unless RUBY_PLATFORM.include?("linux") && RUBY_ENGINE == "ruby"
 
       require "seccomp/notify"
-      Seccomp::Notify.supported?
+      Seccomp::Notify.supported? && Seccomp::Notify.features[:continue]
     rescue LoadError, StandardError
       false
     end

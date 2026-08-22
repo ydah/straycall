@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "yaml"
 require_relative "policy/network"
 require_relative "policy/filesystem"
 require_relative "policy/exec"
@@ -7,6 +8,19 @@ require_relative "policy/exec"
 module Straycall
   class Config
     MODES = %i[fail warn record prompt].freeze
+    TOP_LEVEL_KEYS = %w[network write exec on_violation report_backtrace report_path].freeze
+
+    def self.load(path)
+      data = YAML.safe_load_file(path, permitted_classes: [], aliases: false) || {}
+      raise ConfigurationError, "configuration must be a mapping" unless data.is_a?(Hash)
+
+      unknown = data.keys.map(&:to_s) - TOP_LEVEL_KEYS
+      raise ConfigurationError, "unknown configuration keys: #{unknown.join(", ")}" unless unknown.empty?
+
+      new.tap { |config| config.apply(data) }
+    rescue Psych::Exception => error
+      raise ConfigurationError, "invalid YAML: #{error.message}"
+    end
 
     attr_reader :network, :filesystem, :exec
     attr_accessor :report_backtrace, :report_path
@@ -56,15 +70,117 @@ module Straycall
       exec.deny_elsewhere!
     end
 
+    def deny_exec(*paths)
+      paths.each { |path| exec.deny(path) }
+    end
+
     def on_violation
       @on_violation
     end
 
     def on_violation=(mode)
-      mode = mode.to_sym
+      mode = mode.to_sym if mode.respond_to?(:to_sym)
       raise ConfigurationError, "on_violation must be one of: #{MODES.join(", ")}" unless MODES.include?(mode)
 
       @on_violation = mode
+    end
+
+    def apply(data)
+      apply_network(section(data, "network")) if fetch(data, "network")
+      apply_write(section(data, "write")) if fetch(data, "write")
+      apply_exec(section(data, "exec")) if fetch(data, "exec")
+      self.on_violation = fetch(data, "on_violation") if fetch(data, "on_violation")
+      self.report_backtrace = boolean(data, "report_backtrace") if key?(data, "report_backtrace")
+      if fetch(data, "report_path")
+        raise ConfigurationError, "report_path must be a string" unless fetch(data, "report_path").is_a?(String)
+
+        self.report_path = fetch(data, "report_path")
+      end
+      self
+    end
+
+    private
+
+    def apply_network(data)
+      validate_keys!(data, %w[default allow], "network")
+      default = fetch(data, "default") || "deny"
+      raise ConfigurationError, "network.default must be allow or deny" unless %w[allow deny].include?(default)
+
+      default == "allow" ? network.allow! : network.deny!
+      array(data, "allow").each do |rule|
+        raise ConfigurationError, "network allow rules must be mappings" unless rule.is_a?(Hash)
+        validate_keys!(rule, %w[host ports unix], "network allow rule")
+
+        if (path = fetch(rule, "unix"))
+          allow_unix(string(path, "unix"))
+        elsif (host = fetch(rule, "host"))
+          allow_host(string(host, "host"), ports: fetch(rule, "ports"))
+        else
+          raise ConfigurationError, "network allow rule requires host or unix"
+        end
+      end
+    end
+
+    def apply_write(data)
+      validate_keys!(data, %w[default allow deny_read], "write")
+      default = fetch(data, "default") || "allow"
+      raise ConfigurationError, "write.default must be allow or deny" unless %w[allow deny].include?(default)
+
+      array(data, "allow").each { |path| allow_write_under(string(path, "write.allow")) }
+      deny_write_elsewhere! if default == "deny"
+      array(data, "deny_read").each { |path| deny_read(string(path, "write.deny_read")) }
+    end
+
+    def apply_exec(data)
+      validate_keys!(data, %w[default allow deny], "exec")
+      default = fetch(data, "default") || "allow"
+      raise ConfigurationError, "exec.default must be allow or deny" unless %w[allow deny].include?(default)
+
+      array(data, "allow").each { |path| allow_exec(string(path, "exec.allow")) }
+      array(data, "deny").each { |path| deny_exec(string(path, "exec.deny")) }
+      deny_exec_elsewhere! if default == "deny"
+    end
+
+    def section(data, key)
+      value = fetch(data, key)
+      raise ConfigurationError, "#{key} must be a mapping" unless value.is_a?(Hash)
+
+      value
+    end
+
+    def array(data, key)
+      value = fetch(data, key) || []
+      raise ConfigurationError, "#{key} must be an array" unless value.is_a?(Array)
+
+      value
+    end
+
+    def boolean(data, key)
+      value = fetch(data, key)
+      raise ConfigurationError, "#{key} must be true or false" unless [true, false].include?(value)
+
+      value
+    end
+
+    def string(value, label)
+      raise ConfigurationError, "#{label} must be a string" unless value.is_a?(String)
+
+      value
+    end
+
+    def validate_keys!(data, allowed, label)
+      unknown = data.keys.map(&:to_s) - allowed
+      raise ConfigurationError, "unknown #{label} keys: #{unknown.join(", ")}" unless unknown.empty?
+    end
+
+    def fetch(data, key)
+      return data[key] if data.key?(key)
+
+      data[key.to_sym]
+    end
+
+    def key?(data, key)
+      data.key?(key) || data.key?(key.to_sym)
     end
   end
 end

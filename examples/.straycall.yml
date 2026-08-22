@@ -1,0 +1,13 @@
+network:
+  default: deny
+  allow:
+    - host: 127.0.0.1
+      ports: [5432]
+write:
+  default: deny
+  allow: [tmp, log, coverage, /tmp]
+exec:
+  default: allow
+  deny: [/usr/bin/curl, /usr/bin/wget]
+on_violation: fail
+report_path: tmp/straycall.json

@@ -12,6 +12,7 @@ module Straycall
 
     def initialize(argv)
       @argv = argv.dup
+      @config_actions = []
     end
 
     def run
@@ -36,26 +37,29 @@ module Straycall
     def parse!
       parser = OptionParser.new do |options|
         options.banner = "Usage: straycall [options] -- command [args]"
-        options.on("--[no-]backtrace") { |value| Straycall.config.report_backtrace = value }
-        options.on("--report-path PATH") { |value| Straycall.config.report_path = value }
-        options.on("--record") { Straycall.config.on_violation = :record }
+        options.on("--config PATH") { |value| @config_path = value }
+        options.on("--[no-]backtrace") { |value| @config_actions << ->(config) { config.report_backtrace = value } }
+        options.on("--report-path PATH") { |value| @config_actions << ->(config) { config.report_path = value } }
+        options.on("--record") { @config_actions << ->(config) { config.on_violation = :record } }
         options.on("--policy-path PATH") { |value| @policy_path = value }
-        options.on("--warn") { Straycall.config.on_violation = :warn }
-        options.on("--prompt") { Straycall.config.on_violation = :prompt }
-        options.on("--preset NAME") { |value| apply_preset(value) }
+        options.on("--warn") { @config_actions << ->(config) { config.on_violation = :warn } }
+        options.on("--prompt") { @config_actions << ->(config) { config.on_violation = :prompt } }
+        options.on("--preset NAME") { |value| @config_actions << ->(config) { apply_preset(config, value) } }
       end
       parser.order!(@argv)
       @argv.shift if @argv.first == "--"
       raise OptionParser::MissingArgument, "command" if @argv.empty?
       @policy_path ||= ".straycall.yml"
+      Straycall.config = @config_path ? Config.load(@config_path) : Straycall.config
+      @config_actions.each { |action| action.call(Straycall.config) }
     end
 
-    def apply_preset(name)
+    def apply_preset(config, name)
       raise ConfigurationError, "unknown preset: #{name}" unless name == "bundle-install"
 
-      Straycall.config.on_violation = :prompt
-      Straycall.config.allow_write_under(Dir.pwd, Dir.tmpdir, Gem.dir)
-      Straycall.config.deny_write_elsewhere!
+      config.on_violation = :prompt
+      config.allow_write_under(Dir.pwd, Dir.tmpdir, Gem.dir)
+      config.deny_write_elsewhere!
     end
   end
 end
