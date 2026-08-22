@@ -27,6 +27,14 @@ RSpec.describe Straycall::Config do
     expect(config.network.allowed?(Addrinfo.unix("/tmp/example.sock"))).to be(true)
   end
 
+  it "keeps io_uring disabled unless explicitly allowed" do
+    expect(config.io_uring_allowed?).to be(false)
+
+    config.allow_io_uring!
+
+    expect(config.io_uring_allowed?).to be(true)
+  end
+
   it "resolves allowed hosts once" do
     allow(Addrinfo).to receive(:getaddrinfo).and_return([Addrinfo.tcp("192.0.2.1", 0)])
 

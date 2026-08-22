@@ -10,4 +10,6 @@ All notable changes to Straycall are documented here.
 - Add RSpec and Minitest integrations with supervisor health checks.
 - Add conditional `openat` filtering and unconnected `sendmsg` monitoring.
 - Monitor explicit network binds and support connected destination-less UDP sends.
+- Block auto-bound listeners, unsupported socket families, and batched datagram bypasses.
+- Resolve `execveat` empty paths through their file descriptors and preserve signal exit codes.
 - Add automatic no-op behavior on unsupported platforms.

@@ -45,6 +45,30 @@ RSpec.describe "Linux supervision" do
     end
   end
 
+  it "denies openat2 writes outside configured roots" do
+    config = Straycall::Config.new
+    config.deny_write_elsewhere!
+    script = <<~'RUBY'
+      require "fiddle"
+      require "fcntl"
+      path = Fiddle::Pointer["/tmp/straycall-openat2\0"]
+      how = Fiddle::Pointer[[Fcntl::O_WRONLY | Fcntl::O_CREAT, 0o600, 0].pack("Q<Q<Q<")]
+      syscall = Fiddle::Function.new(
+        Fiddle.dlopen(nil)["syscall"],
+        [Fiddle::TYPE_LONG, Fiddle::TYPE_LONG, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_SIZE_T],
+        Fiddle::TYPE_LONG
+      )
+      result = syscall.call(437, -100, path, how, 24)
+      raise SystemCallError.new("openat2", Fiddle.last_error) if result.negative?
+    RUBY
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).not_to be_success
+    expect(violations.map(&:syscall)).to include(:openat2)
+    expect(violations.map { |item| item.target[:path] }).to include("/tmp/straycall-openat2")
+  end
+
   it "denies unlisted executables" do
     config = Straycall::Config.new
     config.allow_exec(RbConfig.ruby)
@@ -53,6 +77,35 @@ RSpec.describe "Linux supervision" do
       [clean_ruby_env, RbConfig.ruby, "-e", 'exit(system("/usr/bin/true") ? 0 : 1)']
     )
 
+    expect(violations.map { |item| item.target[:path] }).to include("/usr/bin/true")
+  end
+
+  it "denies execveat with an empty path for an unlisted executable" do
+    config = Straycall::Config.new
+    config.allow_exec(RbConfig.ruby)
+    config.deny_exec_elsewhere!
+    script = <<~'RUBY'
+      require "fiddle"
+      executable = "/usr/bin/true"
+      descriptor = IO.sysopen(executable, 0x200000)
+      empty = Fiddle::Pointer.malloc(4096)
+      empty[0, 4096] = "\0" * 4096
+      argument = Fiddle::Pointer["#{executable}\0"]
+      arguments = Fiddle::Pointer[[argument.to_i, 0].pack("Q<Q<")]
+      environment = Fiddle::Pointer[[0].pack("Q<")]
+      execveat = Fiddle::Function.new(
+        Fiddle.dlopen(nil)["execveat"],
+        [Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT],
+        Fiddle::TYPE_INT
+      )
+      result = execveat.call(descriptor, empty, arguments, environment, 0x1000)
+      raise SystemCallError.new("execveat", Fiddle.last_error) if result.negative?
+    RUBY
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).not_to be_success
+    expect(violations.map(&:syscall)).to include(:execveat)
     expect(violations.map { |item| item.target[:path] }).to include("/usr/bin/true")
   end
 
@@ -108,6 +161,69 @@ RSpec.describe "Linux supervision" do
 
     expect(status).not_to be_success
     expect(violations.map(&:syscall)).to include(:bind)
+  end
+
+  it "denies listen auto-binding an external address" do
+    config = Straycall::Config.new
+    script = 'require "socket"; socket = Socket.new(:INET, :STREAM); socket.listen(1)'
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).not_to be_success
+    expect(violations.map(&:syscall)).to include(:listen)
+  end
+
+  it "allows listen after an allowed loopback bind" do
+    config = Straycall::Config.new
+    config.allow_loopback
+    script = <<~RUBY
+      require "socket"
+      socket = Socket.new(:INET, :STREAM)
+      socket.bind(Socket.sockaddr_in(0, "127.0.0.1"))
+      socket.listen(1)
+    RUBY
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).to be_success
+    expect(violations).to be_empty
+  end
+
+  it "denies unsupported packet sockets" do
+    config = Straycall::Config.new
+    script = 'require "socket"; Socket.new(Socket::AF_PACKET, Socket::SOCK_RAW, 0x0300)'
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).not_to be_success
+    expect(violations.map(&:syscall)).to include(:socket)
+  end
+
+  it "denies sendmmsg destinations" do
+    config = Straycall::Config.new
+    script = <<~'RUBY'
+      require "socket"
+      require "fiddle"
+      socket = UDPSocket.new
+      address = Socket.sockaddr_in(53, "192.0.2.1")
+      data = "x"
+      data_pointer = Fiddle::Pointer[data]
+      address_pointer = Fiddle::Pointer[address]
+      iovec = Fiddle::Pointer[[data_pointer.to_i, data.bytesize].pack("Q<Q<")]
+      header = [address_pointer.to_i, address.bytesize, iovec.to_i, 1, 0, 0, 0].pack("Q<L<x4Q<Q<Q<Q<L<x4")
+      messages = Fiddle::Pointer[header + [0].pack("L<x4")]
+      sendmmsg = Fiddle::Function.new(
+        Fiddle.dlopen(nil)["sendmmsg"],
+        [Fiddle::TYPE_INT, Fiddle::TYPE_VOIDP, Fiddle::TYPE_INT, Fiddle::TYPE_INT],
+        Fiddle::TYPE_INT
+      )
+      raise SystemCallError.new("sendmmsg", Fiddle.last_error) if sendmmsg.call(socket.fileno, messages, 1, 0).negative?
+    RUBY
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).not_to be_success
+    expect(violations.map(&:syscall)).to include(:sendmmsg)
   end
 
   it "does not notify read-only openat calls under a write policy" do

@@ -74,6 +74,7 @@ Straycall.configure do |config|
 
   config.allow_exec "/usr/bin/git", "/usr/bin/make"
   config.deny_exec_elsewhere!
+  # config.allow_io_uring! # disables complete syscall coverage
   config.report_path = "tmp/straycall.json"
 end
 ```
@@ -105,11 +106,12 @@ Console output includes the syscall, target, current test, Ruby backtrace (MRI),
 1. This is not a security boundary. Allowing a pointer-based syscall with `continue!` is subject to TOCTOU.
 2. vDSO calls such as normal clock reads cannot be intercepted.
 3. File descriptors opened before filter installation are outside the policy.
-4. `io_uring_setup` is denied so io_uring cannot bypass monitored syscalls.
+4. `io_uring_setup` is denied so io_uring cannot bypass monitored syscalls. `allow_io_uring!` opts out, but network and filesystem coverage is then incomplete.
 5. Ruby backtraces require MRI 3.1+; native calls fall back to `/proc/<tid>/maps`.
 6. Filesystem checks use the unresolved path string. A symlink can point outside an allowed root.
 7. If the supervisor dies, the kernel returns `ENOSYS`; integrations detect the health-pipe closure as soon as they regain control.
-8. A connected `sendto`/`sendmsg` without an explicit destination relies on the earlier monitored `connect`; Straycall cannot recover a peer address from the target file descriptor.
+8. A connected `sendto`/`sendmsg`/`sendmmsg` without an explicit destination relies on the earlier monitored `connect`; Straycall cannot recover a peer address from the target file descriptor.
+9. Listener tracking observes an allowed `bind` before the kernel returns. It prevents accidental auto-bind listeners, but it is not a hostile-code boundary.
 
 ## Development
 

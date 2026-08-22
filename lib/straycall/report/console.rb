@@ -19,6 +19,8 @@ module Straycall
 
       def target(value)
         return value[:path] if %w[unix file exec].include?(value[:type])
+        return "socket domain #{value[:domain]}" if value[:domain]
+        return "socket fd #{value[:fd]}" if value[:type] == "socket"
 
         "#{value[:host]}:#{value[:port]}"
       end

@@ -15,7 +15,7 @@ module Straycall
       validate_notified!(*notified)
 
       conditional_openat = notified.include?(:openat) && !config.filesystem.read_denials?
-      Seccomp::Notify::Policy.new do
+      Seccomp::Notify::Policy.new(deny_io_uring: !config.io_uring_allowed?) do
         notify(*(conditional_openat ? notified - [:openat] : notified))
         notify_if(:openat, argument: 2, mask: Policy::Filesystem::WRITE_FLAGS) if conditional_openat
         deny :ptrace
@@ -23,7 +23,7 @@ module Straycall
     end
 
     def notification_names(config)
-      names = %i[socket connect bind sendto sendmsg]
+      names = %i[socket connect bind listen sendto sendmsg sendmmsg]
       if config.filesystem.active? || config.on_violation == :record
         names.concat(FILESYSTEM_NOTIFY)
         names.concat(LEGACY_FILESYSTEM_NOTIFY) if RUBY_PLATFORM.include?("linux") && RUBY_PLATFORM.include?("x86_64")

@@ -19,4 +19,10 @@ RSpec.describe Straycall::CLI do
 
     expect { expect(cli.run).to eq(64) }.to output(/cannot read configuration/).to_stderr
   end
+
+  it "returns the shell exit code for a child terminated by a signal" do
+    status = instance_double(Process::Status, signaled?: true, termsig: Signal.list.fetch("KILL"))
+
+    expect(described_class.new([]).send(:child_exit_code, status)).to eq(128 + Signal.list.fetch("KILL"))
+  end
 end

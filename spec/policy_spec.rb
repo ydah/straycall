@@ -28,4 +28,15 @@ RSpec.describe Straycall::Policy do
     config.deny_read("/secret")
     expect(described_class.seccomp(config).notified?(:openat)).to be(true)
   end
+
+  it "only allows io_uring after an explicit opt-out" do
+    skip "seccomp user notifications are unavailable" unless Straycall.available?
+
+    config = Straycall::Config.new
+    syscall = Seccomp::Notify::Syscalls.number(:io_uring_setup, :x86_64)
+    expect(described_class.seccomp(config).decisions(:x86_64)).to have_key(syscall)
+
+    config.allow_io_uring!
+    expect(described_class.seccomp(config).decisions(:x86_64)).not_to have_key(syscall)
+  end
 end

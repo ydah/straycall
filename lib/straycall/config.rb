@@ -34,6 +34,7 @@ module Straycall
       @on_violation = :fail
       @report_backtrace = true
       @report_path = nil
+      @allow_io_uring = false
     end
 
     def deny_network!
@@ -74,6 +75,14 @@ module Straycall
 
     def deny_exec(*paths)
       paths.each { |path| exec.deny(path) }
+    end
+
+    def allow_io_uring!
+      @allow_io_uring = true
+    end
+
+    def io_uring_allowed?
+      @allow_io_uring
     end
 
     def on_violation

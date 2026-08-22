@@ -50,8 +50,8 @@ module Straycall
         end
       end
 
-      def deny_all_inet?
-        @default == :deny && @inet.empty?
+      def allow_all?
+        @default == :allow
       end
 
       private

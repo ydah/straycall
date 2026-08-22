@@ -26,13 +26,21 @@ module Straycall
         require_relative "recorder"
         Recorder.new(@policy_path).write(violations)
       end
-      violations.any? && Straycall.config.on_violation == :fail ? 1 : status&.exitstatus.to_i
+      return 1 if violations.any? && Straycall.config.on_violation == :fail
+
+      child_exit_code(status)
     rescue OptionParser::ParseError, ConfigurationError => error
       warn "straycall: #{error.message}"
       64
     end
 
     private
+
+    def child_exit_code(status)
+      return 1 unless status
+
+      status.signaled? ? 128 + status.termsig : status.exitstatus
+    end
 
     def parse!
       parser = OptionParser.new do |options|

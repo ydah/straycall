@@ -4,7 +4,8 @@ module Straycall
   module Handlers
     module Exec
       def handle_exec(request, dirfd_index, path_index)
-        path = request.read_string(request.args[path_index])
+        path_address = request.args[path_index]
+        path = dirfd_index && request.read(path_address, 1) == "\0" ? "" : request.read_string(path_address)
         dirfd = dirfd_index ? request.args[dirfd_index] : Policy::Filesystem::AT_FDCWD
         path = @config.filesystem.resolve(path, tid: request.tid, dirfd:)
         target = {type: "exec", path:}
