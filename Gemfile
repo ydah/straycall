@@ -11,3 +11,4 @@ gem "seccomp-notify", path: local_seccomp_notify if File.directory?(local_seccom
 gem "rake", "~> 13.0"
 
 gem "rspec", "~> 3.0"
+gem "minitest", "~> 5.0"

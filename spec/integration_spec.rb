@@ -4,8 +4,13 @@ require "rbconfig"
 require "tmpdir"
 require "open3"
 require "straycall/supervisor"
+require "timeout"
 
 RSpec.describe "Linux supervision" do
+  let(:clean_ruby_env) do
+    ENV.keys.grep(/\A(?:BUNDLE|BUNDLER|RUBY(?:OPT|LIB))/).to_h { |name| [name, nil] }
+  end
+
   before do
     skip "seccomp user notifications are unavailable" unless Straycall.available?
   end
@@ -15,7 +20,7 @@ RSpec.describe "Linux supervision" do
       config = Straycall::Config.new
       config.report_path = File.join(directory, "report.json")
       status, violations = Straycall::Supervisor.new(config).run(
-        [RbConfig.ruby, "-rsocket", "-e", 'TCPSocket.new("192.0.2.1", 443)']
+        [clean_ruby_env, RbConfig.ruby, "-rsocket", "-e", 'TCPSocket.new("192.0.2.1", 443)']
       )
 
       expect(status).not_to be_success
@@ -31,7 +36,7 @@ RSpec.describe "Linux supervision" do
       config.allow_write_under(directory)
       config.deny_write_elsewhere!
       status, violations = Straycall::Supervisor.new(config).run(
-        [RbConfig.ruby, "-e", 'File.write("/tmp/straycall-forbidden", "x")']
+        [clean_ruby_env, RbConfig.ruby, "-e", 'File.write("/tmp/straycall-forbidden", "x")']
       )
 
       expect(status).not_to be_success
@@ -45,7 +50,7 @@ RSpec.describe "Linux supervision" do
     config.allow_exec(RbConfig.ruby)
     config.deny_exec_elsewhere!
     _status, violations = Straycall::Supervisor.new(config).run(
-      [RbConfig.ruby, "-e", 'exit(system("/usr/bin/true") ? 0 : 1)']
+      [clean_ruby_env, RbConfig.ruby, "-e", 'exit(system("/usr/bin/true") ? 0 : 1)']
     )
 
     expect(violations.map { |item| item.target[:path] }).to include("/usr/bin/true")
@@ -60,31 +65,75 @@ RSpec.describe "Linux supervision" do
       end.each(&:join)
     RUBY
 
-    _status, violations = Straycall::Supervisor.new(config).run([RbConfig.ruby, "-e", script])
+    _status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
 
     expect(violations.count { |item| item.syscall == :connect }).to eq(100)
+  end
+
+  it "denies an unconnected sendmsg destination" do
+    config = Straycall::Config.new
+    script = <<~RUBY
+      require "socket"
+      socket = UDPSocket.new
+      socket.sendmsg("x", 0, Socket.sockaddr_in(53, "192.0.2.1"))
+    RUBY
+
+    _status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(violations.map(&:syscall)).to include(:sendmsg)
+    expect(violations.find { |item| item.syscall == :sendmsg }.target).to include(host: "192.0.2.1", port: 53)
+  end
+
+  it "does not notify read-only openat calls under a write policy" do
+    config = Straycall::Config.new
+    config.deny_write_elsewhere!
+
+    status, violations = Straycall::Supervisor.new(config).run(
+      [clean_ruby_env, RbConfig.ruby, "-e", 'File.read("/etc/hosts")']
+    )
+
+    expect(status).to be_success
+    expect(violations).to be_empty
   end
 
   it "fails an RSpec suite and associates its example" do
     Dir.mktmpdir do |directory|
       report = File.join(directory, "report.json")
-      suite = File.join(directory, "guarded_spec.rb")
-      File.write(suite, <<~RUBY)
-        require "straycall"
-        Straycall.config.report_path = #{report.inspect}
-        require "straycall/rspec"
-        require "socket"
-        RSpec.describe("guarded") do
-          it("connects") { TCPSocket.new("192.0.2.1", 443) rescue Errno::EPERM }
-        end
-      RUBY
-
-      _stdout, _stderr, status = Open3.capture3(
-        RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}", "-S", "rspec", suite
-      )
+      output = File.join(directory, "subprocess.log")
+      fixture = File.expand_path("fixtures/in_process_suite.rb", __dir__)
+      environment = {"STRAYCALL_TEST_REPORT" => report}
+      status = run_suite(environment, output, RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}",
+                         Gem.bin_path("rspec-core", "rspec"), fixture)
 
       expect(status).not_to be_success
+      expect(File).to exist(report), File.read(output)
       expect(::JSON.parse(File.read(report)).dig("violations", 0, "example", "description")).to include("connects")
+    end
+  end
+
+  it "fails a Minitest suite and associates its test" do
+    Dir.mktmpdir do |directory|
+      report = File.join(directory, "report.json")
+      output = File.join(directory, "subprocess.log")
+      fixture = File.expand_path("fixtures/in_process_minitest.rb", __dir__)
+      environment = {"STRAYCALL_TEST_REPORT" => report}
+      status = run_suite(environment, output, RbConfig.ruby, "-I#{File.expand_path("../lib", __dir__)}", fixture)
+
+      expect(status).not_to be_success
+      expect(File).to exist(report), File.read(output)
+      expect(::JSON.parse(File.read(report)).dig("violations", 0, "example", "description")).to include("test_connects")
+    end
+  end
+
+  def run_suite(environment, output, *command)
+    pid = Process.spawn(environment, *command, out: output, err: output)
+    Timeout.timeout(10) { Process.waitpid2(pid).last }
+  rescue Timeout::Error
+    raise "subprocess timed out:\n#{File.read(output)}"
+  ensure
+    if pid
+      Process.kill("KILL", pid) rescue nil
+      Process.waitpid(pid) rescue nil
     end
   end
 end

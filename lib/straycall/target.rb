@@ -20,6 +20,11 @@ module Straycall
     def violation?
       @reporter&.violation? || false
     end
+
+    def stop
+      @reporter&.stop
+      @reporter = nil
+    end
   end
 end
 

@@ -20,20 +20,19 @@ module Straycall
       return unless Straycall.available?
 
       require "seccomp/notify"
-      require_relative "supervisor"
+      require_relative "in_process"
       require_relative "target"
       supervisor_socket, target_socket = UNIXSocket.pair
-      guard = Supervisor.new(Straycall.config, reporter: Reporter::Client.new(supervisor_socket))
-      Seccomp::Notify.supervise_self(Policy.seccomp(Straycall.config), supervisor: :fork, concurrency: 8) do |instance|
-        target_socket.close
-        guard.register(instance)
-      end
-      supervisor_socket.close
+      InProcess.install(Straycall.config, report_socket: supervisor_socket, inherited_report_socket: target_socket)
       Target.start(target_socket)
       ::Minitest::Test.prepend(Hooks)
       ::Minitest.after_run do
-        ensure_supervisor!
-        raise Error, "syscall violations were detected; see the straycall report" if Target.violation?
+        begin
+          Straycall::Minitest.ensure_supervisor!
+          raise Error, "syscall violations were detected; see the straycall report" if Target.violation?
+        ensure
+          Target.stop
+        end
       end
     end
 

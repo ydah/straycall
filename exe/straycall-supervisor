@@ -1,0 +1,29 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+health_writer = IO.for_fd(Integer(ARGV.fetch(4)))
+health_writer.sync = true
+health_writer.write("R")
+
+require "socket"
+require "seccomp/notify"
+require "straycall"
+require "straycall/supervisor"
+
+socket = UNIXSocket.for_fd(Integer(ARGV.fetch(0)))
+target_pid = Integer(ARGV.fetch(1))
+config = Marshal.load([ARGV.fetch(2)].pack("H*")) # rubocop:disable Security/MarshalLoad
+report_socket = UNIXSocket.for_fd(Integer(ARGV.fetch(3)))
+listener = Seccomp::Notify::FdPassing.recv_fd(socket)
+socket.close
+guard = Straycall::Supervisor.new(config, reporter: Straycall::Reporter::Client.new(report_socket))
+supervisor = Seccomp::Notify::Supervisor.new(
+  listener,
+  target_pid:,
+  target_child: false,
+  health_writer:,
+  concurrency: 8
+)
+guard.register(supervisor)
+health_writer.write("S")
+supervisor.run
