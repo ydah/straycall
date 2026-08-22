@@ -120,4 +120,4 @@ gem build straycall.gemspec
 
 Real seccomp integration examples skip automatically outside supported Linux environments.
 
-On Linux, `ruby benchmark/require_overhead.rb` checks that read-only `openat` overhead stays below 10% across 100,000 generated require files. Set `STRAYCALL_BENCHMARK_FILES` to scale the workload.
+On Linux, `ruby benchmark/require_overhead.rb` checks that read-only `openat` overhead stays below 10% across 100,000 generated require files, using the median of five alternating runs after warmup. Set `STRAYCALL_BENCHMARK_FILES` to scale the workload.
