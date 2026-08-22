@@ -11,7 +11,7 @@ On macOS, Windows, non-MRI Ruby, an unsupported kernel, or with `STRAYCALL=0`, r
 
 - Linux x86_64 or aarch64 with seccomp user notifications and `CONTINUE` (Linux 5.5+)
 - MRI Ruby 3.1+
-- `seccomp-notify` 0.1.x
+- `seccomp-notify` 0.2.x
 
 Container runtimes may block `seccomp(2)` in their own profile. Use an isolated container with `--security-opt seccomp=unconfined` when needed.
 
@@ -90,7 +90,7 @@ require "straycall/rspec"
 require "straycall/minitest"
 ```
 
-This in-process mode starts a detached supervisor, associates violations with the current test, and checks the supervisor health pipe. Prefer the CLI if tests use broad `Process.wait` calls or fork heavily; filters are inherited and cannot be removed.
+This in-process mode starts a clean detached supervisor with `Process.spawn`, associates violations with the current test, and checks the supervisor health pipe. Prefer the CLI if tests use broad `Process.wait` calls or fork heavily; filters are inherited and cannot be removed.
 
 ## Reports
 
@@ -109,8 +109,7 @@ Console output includes the syscall, target, current test, Ruby backtrace (MRI),
 5. Ruby backtraces require MRI 3.1+; native calls fall back to `/proc/<tid>/maps`.
 6. Filesystem checks use the unresolved path string. A symlink can point outside an allowed root.
 7. If the supervisor dies, the kernel returns `ENOSYS`; integrations detect the health-pipe closure as soon as they regain control.
-8. `seccomp-notify` 0.1 reserves `sendmsg` to transfer its listener. Straycall covers `connect` and `sendto`, but cannot observe an unconnected `sendmsg` until the dependency supports fd-conditional notifications.
-9. `seccomp-notify` 0.1 has no argument-bit filter. When filesystem guarding is enabled, read-only `openat` calls reach the supervisor and are immediately continued; network-only use avoids this overhead.
+8. A connected `sendmsg` without `msg_name` relies on the earlier monitored `connect`; Straycall cannot recover a peer address from the target file descriptor.
 
 ## Development
 
@@ -121,4 +120,4 @@ gem build straycall.gemspec
 
 Real seccomp integration examples skip automatically outside supported Linux environments.
 
-On Linux, `ruby benchmark/require_overhead.rb` measures the read-only `openat` overhead against 1,000 generated require files.
+On Linux, `ruby benchmark/require_overhead.rb` checks that read-only `openat` overhead stays below 10% across 100,000 generated require files. Set `STRAYCALL_BENCHMARK_FILES` to scale the workload.
