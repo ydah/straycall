@@ -20,10 +20,12 @@ module Straycall
       new.tap { |config| config.apply(data) }
     rescue Psych::Exception => error
       raise ConfigurationError, "invalid YAML: #{error.message}"
+    rescue SystemCallError => error
+      raise ConfigurationError, "cannot read configuration: #{error.message}"
     end
 
     attr_reader :network, :filesystem, :exec
-    attr_accessor :report_backtrace, :report_path
+    attr_reader :report_backtrace, :report_path
 
     def initialize
       @network = Policy::Network.new
@@ -78,6 +80,20 @@ module Straycall
       @on_violation
     end
 
+    def report_backtrace=(value)
+      raise ConfigurationError, "report_backtrace must be true or false" unless [true, false].include?(value)
+
+      @report_backtrace = value
+    end
+
+    def report_path=(value)
+      unless value.nil? || (value.is_a?(String) && !value.empty?)
+        raise ConfigurationError, "report_path must be a non-empty string or nil"
+      end
+
+      @report_path = value
+    end
+
     def on_violation=(mode)
       mode = mode.to_sym if mode.respond_to?(:to_sym)
       raise ConfigurationError, "on_violation must be one of: #{MODES.join(", ")}" unless MODES.include?(mode)
@@ -86,12 +102,12 @@ module Straycall
     end
 
     def apply(data)
-      apply_network(section(data, "network")) if fetch(data, "network")
-      apply_write(section(data, "write")) if fetch(data, "write")
-      apply_exec(section(data, "exec")) if fetch(data, "exec")
-      self.on_violation = fetch(data, "on_violation") if fetch(data, "on_violation")
+      apply_network(section(data, "network")) if key?(data, "network")
+      apply_write(section(data, "write")) if key?(data, "write")
+      apply_exec(section(data, "exec")) if key?(data, "exec")
+      self.on_violation = fetch(data, "on_violation") if key?(data, "on_violation")
       self.report_backtrace = boolean(data, "report_backtrace") if key?(data, "report_backtrace")
-      if fetch(data, "report_path")
+      if key?(data, "report_path")
         raise ConfigurationError, "report_path must be a string" unless fetch(data, "report_path").is_a?(String)
 
         self.report_path = fetch(data, "report_path")
@@ -103,7 +119,7 @@ module Straycall
 
     def apply_network(data)
       validate_keys!(data, %w[default allow], "network")
-      default = fetch(data, "default") || "deny"
+      default = key?(data, "default") ? fetch(data, "default") : "deny"
       raise ConfigurationError, "network.default must be allow or deny" unless %w[allow deny].include?(default)
 
       default == "allow" ? network.allow! : network.deny!
@@ -111,19 +127,25 @@ module Straycall
         raise ConfigurationError, "network allow rules must be mappings" unless rule.is_a?(Hash)
         validate_keys!(rule, %w[host ports unix], "network allow rule")
 
-        if (path = fetch(rule, "unix"))
+        unix = key?(rule, "unix")
+        host = key?(rule, "host")
+        raise ConfigurationError, "network allow rule requires exactly one of host or unix" if unix == host
+
+        if unix
+          raise ConfigurationError, "unix network allow rules cannot specify ports" if key?(rule, "ports")
+
+          path = fetch(rule, "unix")
           allow_unix(string(path, "unix"))
-        elsif (host = fetch(rule, "host"))
-          allow_host(string(host, "host"), ports: fetch(rule, "ports"))
         else
-          raise ConfigurationError, "network allow rule requires host or unix"
+          address = fetch(rule, "host")
+          allow_host(string(address, "host"), ports: fetch(rule, "ports"))
         end
       end
     end
 
     def apply_write(data)
       validate_keys!(data, %w[default allow deny_read], "write")
-      default = fetch(data, "default") || "allow"
+      default = key?(data, "default") ? fetch(data, "default") : "allow"
       raise ConfigurationError, "write.default must be allow or deny" unless %w[allow deny].include?(default)
 
       array(data, "allow").each { |path| allow_write_under(string(path, "write.allow")) }
@@ -133,7 +155,7 @@ module Straycall
 
     def apply_exec(data)
       validate_keys!(data, %w[default allow deny], "exec")
-      default = fetch(data, "default") || "allow"
+      default = key?(data, "default") ? fetch(data, "default") : "allow"
       raise ConfigurationError, "exec.default must be allow or deny" unless %w[allow deny].include?(default)
 
       array(data, "allow").each { |path| allow_exec(string(path, "exec.allow")) }
@@ -149,7 +171,7 @@ module Straycall
     end
 
     def array(data, key)
-      value = fetch(data, key) || []
+      value = key?(data, key) ? fetch(data, key) : []
       raise ConfigurationError, "#{key} must be an array" unless value.is_a?(Array)
 
       value

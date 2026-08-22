@@ -33,16 +33,19 @@ RSpec.describe Straycall::Policy::Filesystem do
 
   it "fails closed when the target process path cannot be resolved" do
     policy = described_class.new
-    allow(File).to receive(:readlink).and_raise(Errno::ENOENT)
+    allow(File).to receive(:readlink).and_raise(Errno::EINVAL)
 
     expect { policy.resolve("tmp/result", tid: 42) }.to raise_error(Straycall::PathResolutionError)
   end
 
-  it "bounds its decision cache" do
+  it "keeps recently used decisions when bounding its cache" do
     policy = described_class.new(cache_size: 2)
-    3.times { |index| policy.allowed_write?("/tmp/#{index}") }
+    policy.allowed_write?("/tmp/0")
+    policy.allowed_write?("/tmp/1")
+    policy.allowed_write?("/tmp/0")
+    policy.allowed_write?("/tmp/2")
 
-    expect(policy.instance_variable_get(:@cache).length).to eq(2)
+    expect(policy.instance_variable_get(:@cache).keys).to contain_exactly([:write, "/tmp/0"], [:write, "/tmp/2"])
   end
 
   it "allows the reporter to name its thread through proc" do

@@ -9,4 +9,5 @@ All notable changes to Straycall are documented here.
 - Add CLI, YAML and Ruby configuration, record and prompt modes, and a bundle-install preset.
 - Add RSpec and Minitest integrations with supervisor health checks.
 - Add conditional `openat` filtering and unconnected `sendmsg` monitoring.
+- Monitor explicit network binds and support connected destination-less UDP sends.
 - Add automatic no-op behavior on unsupported platforms.

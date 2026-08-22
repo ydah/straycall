@@ -84,6 +84,32 @@ RSpec.describe "Linux supervision" do
     expect(violations.find { |item| item.syscall == :sendmsg }.target).to include(host: "192.0.2.1", port: 53)
   end
 
+  it "allows connected UDP sends after the destination was approved" do
+    config = Straycall::Config.new
+    config.allow_loopback
+    script = <<~RUBY
+      require "socket"
+      socket = UDPSocket.new
+      socket.connect("127.0.0.1", 49152)
+      socket.send("x", 0)
+    RUBY
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).to be_success
+    expect(violations).to be_empty
+  end
+
+  it "denies binding an external listener under the default network policy" do
+    config = Straycall::Config.new
+    script = 'require "socket"; UDPSocket.new.bind("0.0.0.0", 0)'
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).not_to be_success
+    expect(violations.map(&:syscall)).to include(:bind)
+  end
+
   it "does not notify read-only openat calls under a write policy" do
     config = Straycall::Config.new
     config.deny_write_elsewhere!
@@ -107,7 +133,9 @@ RSpec.describe "Linux supervision" do
 
       expect(status).not_to be_success
       expect(File).to exist(report), File.read(output)
-      expect(::JSON.parse(File.read(report)).dig("violations", 0, "example", "description")).to include("connects")
+      violation = ::JSON.parse(File.read(report)).dig("violations", 0)
+      expect(violation.dig("example", "description")).to include("connects")
+      expect(violation).not_to have_key("backtrace")
     end
   end
 

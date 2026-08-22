@@ -109,7 +109,7 @@ Console output includes the syscall, target, current test, Ruby backtrace (MRI),
 5. Ruby backtraces require MRI 3.1+; native calls fall back to `/proc/<tid>/maps`.
 6. Filesystem checks use the unresolved path string. A symlink can point outside an allowed root.
 7. If the supervisor dies, the kernel returns `ENOSYS`; integrations detect the health-pipe closure as soon as they regain control.
-8. A connected `sendmsg` without `msg_name` relies on the earlier monitored `connect`; Straycall cannot recover a peer address from the target file descriptor.
+8. A connected `sendto`/`sendmsg` without an explicit destination relies on the earlier monitored `connect`; Straycall cannot recover a peer address from the target file descriptor.
 
 ## Development
 

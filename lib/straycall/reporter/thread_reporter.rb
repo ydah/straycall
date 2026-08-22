@@ -49,6 +49,8 @@ module Straycall
           when :violation
             @violation = true
             write("OK\n")
+          when :sync
+            write("OK\n")
           end
         end
       rescue IOError, SystemCallError

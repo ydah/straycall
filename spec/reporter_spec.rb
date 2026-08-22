@@ -79,6 +79,18 @@ RSpec.describe Straycall::Reporter do
     supervisor_socket&.close unless supervisor_socket&.closed?
   end
 
+  it "receives the current example without requesting a backtrace" do
+    supervisor_socket, target_socket = UNIXSocket.pair
+    reporter = Straycall::Reporter::ThreadReporter.new(target_socket).start
+    client = Straycall::Reporter::Client.new(supervisor_socket)
+    reporter.notify_example(file: "spec/example_spec.rb", line: 7, description: "works")
+
+    expect(client.example).to eq(file: "spec/example_spec.rb", line: 7, description: "works")
+  ensure
+    reporter&.stop
+    supervisor_socket&.close unless supervisor_socket&.closed?
+  end
+
   it "symbolizes an instruction pointer from proc maps" do
     maps = "7f000000-7f001000 r-xp 00001000 00:00 0 /tmp/foo_ext.so\n"
 

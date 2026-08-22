@@ -5,14 +5,25 @@ require_relative "protocol"
 module Straycall
   module Reporter
     class Client
-      attr_reader :example
-
       def initialize(socket, timeout: 0.2)
         @socket = socket
         @reader = Protocol::Reader.new(socket)
         @timeout = timeout
         @mutex = Mutex.new
         @alive = true
+      end
+
+      def example
+        return @example unless @alive
+
+        @mutex.synchronize do
+          @socket.write(Protocol.sync_request)
+          read_ack
+          @example
+        end
+      rescue IOError, SystemCallError
+        @alive = false
+        @example
       end
 
       def backtrace(tid)

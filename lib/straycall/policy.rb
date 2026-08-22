@@ -23,7 +23,7 @@ module Straycall
     end
 
     def notification_names(config)
-      names = %i[socket connect sendto sendmsg]
+      names = %i[socket connect bind sendto sendmsg]
       if config.filesystem.active? || config.on_violation == :record
         names.concat(FILESYSTEM_NOTIFY)
         names.concat(LEGACY_FILESYSTEM_NOTIFY) if RUBY_PLATFORM.include?("linux") && RUBY_PLATFORM.include?("x86_64")

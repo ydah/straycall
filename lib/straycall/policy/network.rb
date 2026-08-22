@@ -35,6 +35,8 @@ module Straycall
         Addrinfo.getaddrinfo(host, nil, nil, Socket::SOCK_STREAM).filter_map do |address|
           add_inet(IPAddr.new(address.ip_address), ports) if address.ip?
         end
+      rescue SocketError => error
+        raise ConfigurationError, "cannot resolve host #{host.inspect}: #{error.message}"
       end
 
       def allowed?(address)
@@ -62,7 +64,7 @@ module Straycall
         return if ports.nil?
 
         Array(ports).each do |port|
-          next if port.is_a?(Range) && port.begin.is_a?(Integer) && port.end.is_a?(Integer) && port.begin >= 1 && port.end <= 65_535
+          next if port.is_a?(Range) && port.begin.is_a?(Integer) && port.end.is_a?(Integer) && port.begin.between?(1, port.end) && port.end <= 65_535
           next if port.is_a?(Integer) && (1..65_535).cover?(port)
 
           raise ConfigurationError, "ports must contain integers or ranges between 1 and 65535"

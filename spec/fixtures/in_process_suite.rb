@@ -2,6 +2,7 @@
 
 require "straycall"
 Straycall.config.report_path = ENV.fetch("STRAYCALL_TEST_REPORT")
+Straycall.config.report_backtrace = false
 require "straycall/rspec"
 require "socket"
 

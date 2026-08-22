@@ -20,7 +20,7 @@ module Straycall
         else
           request.continue!(unsafe: true)
         end
-      rescue Seccomp::Notify::MemoryReadError, PathResolutionError
+      rescue PathResolutionError, Seccomp::Notify::MemoryReadError
         record_violation(request, {type: "file", path: "?"}, nil)
       end
 
@@ -34,7 +34,7 @@ module Straycall
         else
           request.continue!(unsafe: true)
         end
-      rescue Seccomp::Notify::MemoryReadError, PathResolutionError
+      rescue PathResolutionError, Seccomp::Notify::MemoryReadError
         record_violation(request, {type: "file", path: "?"}, nil)
       end
 
@@ -52,7 +52,7 @@ module Straycall
         else
           request.continue!(unsafe: true)
         end
-      rescue Seccomp::Notify::MemoryReadError, PathResolutionError
+      rescue PathResolutionError, Seccomp::Notify::MemoryReadError
         record_violation(request, {type: "file", path: "?", flags:}, nil)
       end
 

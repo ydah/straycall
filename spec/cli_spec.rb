@@ -13,4 +13,10 @@ RSpec.describe Straycall::CLI do
     expect(Straycall.config.on_violation).to eq(:prompt)
     expect(Straycall.config.filesystem).to be_active
   end
+
+  it "returns a usage error for an unreadable configuration" do
+    cli = described_class.new(["--config", "/definitely/missing/straycall.yml", "--", "true"])
+
+    expect { expect(cli.run).to eq(64) }.to output(/cannot read configuration/).to_stderr
+  end
 end

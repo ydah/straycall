@@ -52,6 +52,7 @@ module Straycall
     def register(supervisor)
       supervisor.on(:socket) { |request| handle_socket(request) }
       supervisor.on(:connect) { |request| handle_address(request, 1, 2) }
+      supervisor.on(:bind) { |request| handle_address(request, 1, 2) }
       supervisor.on(:sendto) { |request| handle_address(request, 4, 5) }
       supervisor.on(:sendmsg) { |request| handle_sendmsg(request) }
       names = Policy.notification_names(@config)
@@ -77,6 +78,10 @@ module Straycall
     end
 
     def handle_address(request, address_arg, length_arg)
+      if request.syscall == :sendto && (request.args[address_arg].zero? || request.args[length_arg].zero?)
+        return request.continue!
+      end
+
       address = request.read_sockaddr(request.args[address_arg], request.args[length_arg])
       return request.error!(Errno::EPERM) unless request.valid?
       if @config.network.allowed?(address) && @config.on_violation != :record
@@ -129,6 +134,7 @@ module Straycall
 
     def suggestion(address)
       return %(allow_unix #{address.unix_path.inspect}) if address.unix?
+      return %(allow_host #{address.ip_address.inspect}) if address.ip_port.zero?
 
       %(allow_host #{address.ip_address.inspect}, ports: [#{address.ip_port}])
     end

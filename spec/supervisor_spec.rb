@@ -39,6 +39,33 @@ RSpec.describe Straycall::Supervisor do
     expect(supervisor.violations.first.syscall).to eq(:sendmsg)
   end
 
+  it "continues a connected sendto that omits its already-checked destination" do
+    request = request_for(nil, syscall: :sendto, args: [0, 1, 2, 3, 0, 0])
+
+    supervisor.send(:handle_address, request, 4, 5)
+
+    expect(request).to have_received(:continue!).with(no_args)
+    expect(supervisor.violations).to be_empty
+  end
+
+  it "denies and reports a disallowed bind address" do
+    request = request_for(Addrinfo.udp("0.0.0.0", 4567), syscall: :bind)
+
+    supervisor.send(:handle_address, request, 1, 2)
+
+    expect(request).to have_received(:error!).with(Errno::EPERM)
+    expect(supervisor.violations.first.syscall).to eq(:bind)
+    expect(supervisor.violations.first.suggestion).to eq('allow_host "0.0.0.0", ports: [4567]')
+  end
+
+  it "does not suggest an invalid port for an ephemeral bind" do
+    request = request_for(Addrinfo.udp("0.0.0.0", 0), syscall: :bind)
+
+    supervisor.send(:handle_address, request, 1, 2)
+
+    expect(supervisor.violations.first.suggestion).to eq('allow_host "0.0.0.0"')
+  end
+
   it "denies writes outside configured roots" do
     config.allow_write_under("/tmp/allowed")
     config.deny_write_elsewhere!
@@ -91,10 +118,30 @@ RSpec.describe Straycall::Supervisor do
     expect(supervisor.violations.first.target).to eq(type: "exec", path: "/usr/bin/curl")
   end
 
-  def request_for(address, syscall: :connect)
+  it "reports an executable whose relative path cannot be resolved" do
+    config.deny_exec_elsewhere!
+    allow(config.filesystem).to receive(:resolve).and_raise(Straycall::PathResolutionError)
+    request = instance_double(
+      "Seccomp::Notify::Request",
+      args: [1],
+      syscall: :execve,
+      tid: 123,
+      instruction_pointer: 0,
+      read_string: "tool",
+      error!: nil,
+      continue!: nil
+    )
+
+    supervisor.send(:handle_exec, request, nil, 0)
+
+    expect(request).to have_received(:error!).with(Errno::EPERM)
+    expect(supervisor.violations.first.target).to eq(type: "exec", path: "?")
+  end
+
+  def request_for(address, syscall: :connect, args: [0, 1, 2, 3, 4, 5])
     instance_double(
       "Seccomp::Notify::Request",
-      args: [0, 1, 2, 3, 4, 5],
+      args:,
       syscall:,
       tid: 123,
       instruction_pointer: 0,

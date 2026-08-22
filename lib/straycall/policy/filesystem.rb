@@ -65,7 +65,7 @@ module Straycall
           File.readlink("/proc/#{tid}/fd/#{signed(dirfd)}")
         end
         File.expand_path(path, base)
-      rescue Errno::ENOENT, Errno::EACCES => error
+      rescue SystemCallError => error
         raise PathResolutionError, "cannot resolve target path through /proc: #{error.message}"
       end
 
@@ -95,7 +95,11 @@ module Straycall
 
       def cached(key)
         @mutex.synchronize do
-          return @cache[key] if @cache.key?(key)
+          if @cache.key?(key)
+            value = @cache.delete(key)
+            @cache[key] = value
+            return value
+          end
 
           @cache[key] = yield
           @cache.shift if @cache.length > @cache_size

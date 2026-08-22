@@ -11,13 +11,19 @@ module Straycall
 
     def write(violations)
       network = violations.filter_map do |item|
-        next unless item.target[:type] == "inet"
+        next unless item.target[:type] == "inet" && item.target[:host] != "?"
 
-        {"host" => item.target[:host], "ports" => [item.target[:port]]}
+        {"host" => item.target[:host]}.tap do |rule|
+          rule["ports"] = [item.target[:port]] if (1..65_535).cover?(item.target[:port])
+        end
       end.uniq
-      unix = violations.filter_map { |item| item.target[:path] if item.target[:type] == "unix" }.uniq
-      writes = violations.filter_map { |item| File.dirname(item.target[:path]) if item.target[:type] == "file" }.uniq
-      executables = violations.filter_map { |item| item.target[:path] if item.target[:type] == "exec" }.uniq
+      unix = violations.filter_map { |item| item.target[:path] if item.target[:type] == "unix" && item.target[:path] != "?" }.uniq
+      writes = violations.filter_map do |item|
+        File.dirname(item.target[:path]) if item.target[:type] == "file" && item.target[:path] != "?"
+      end.uniq
+      executables = violations.filter_map do |item|
+        item.target[:path] if item.target[:type] == "exec" && item.target[:path] != "?"
+      end.uniq
       policy = {
         "network" => {"default" => "deny", "allow" => network + unix.map { |path| {"unix" => path} }},
         "write" => {"default" => "deny", "allow" => writes},

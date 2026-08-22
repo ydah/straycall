@@ -50,6 +50,10 @@ module Straycall
         "EXAMPLE #{JSON.generate(value)}\n"
       end
 
+      def sync_request
+        "SYNC\n"
+      end
+
       def parse(line)
         type, rest = line.to_s.chomp.split(" ", 2)
         case type
@@ -60,6 +64,8 @@ module Straycall
           [:example, JSON.parse(rest, symbolize_names: true)]
         when "VIOLATION"
           [:violation]
+        when "SYNC"
+          [:sync]
         when "OK"
           [:ack]
         else

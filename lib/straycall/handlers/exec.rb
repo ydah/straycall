@@ -13,7 +13,7 @@ module Straycall
         else
           request.continue!(unsafe: true)
         end
-      rescue Seccomp::Notify::MemoryReadError
+      rescue PathResolutionError, Seccomp::Notify::MemoryReadError
         record_violation(request, {type: "exec", path: "?"}, nil)
       end
     end
