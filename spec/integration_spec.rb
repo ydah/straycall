@@ -96,7 +96,7 @@ RSpec.describe "Linux supervision" do
       script = <<~RUBY
         require "fiddle"
         require "fcntl"
-        path = Fiddle::Pointer["/tmp/straycall-legacy-#{name}\0"]
+        path = Fiddle::Pointer["/tmp/straycall-legacy-#{name}\\0"]
         syscall = Fiddle::Function.new(
           Fiddle.dlopen(nil)["syscall"],
           [Fiddle::TYPE_LONG, Fiddle::TYPE_VOIDP, Fiddle::TYPE_LONG, Fiddle::TYPE_LONG],
