@@ -25,7 +25,19 @@ module Straycall
       @reporter&.stop
       @reporter = nil
     end
+
+    def start_from_environment
+      return unless ENV["STRAYCALL_REPORT_FD"]
+      if ENV["STRAYCALL_REPORT_PID"] && Integer(ENV["STRAYCALL_REPORT_PID"]) != Process.pid
+        IO.for_fd(Integer(ENV["STRAYCALL_REPORT_FD"]), autoclose: true).close
+        return
+      end
+
+      start
+    rescue ArgumentError, SystemCallError
+      nil
+    end
   end
 end
 
-Straycall::Target.start if ENV["STRAYCALL_REPORT_FD"]
+Straycall::Target.start_from_environment

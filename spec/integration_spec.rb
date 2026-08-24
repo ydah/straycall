@@ -326,6 +326,22 @@ RSpec.describe "Linux supervision" do
     end
   end
 
+  it "reuses CLI supervision when an RSpec suite loads the integration" do
+    Dir.mktmpdir do |directory|
+      report = File.join(directory, "report.json")
+      output = File.join(directory, "subprocess.log")
+      fixture = File.expand_path("fixtures/in_process_suite.rb", __dir__)
+      executable = File.expand_path("../exe/straycall", __dir__)
+      environment = {"STRAYCALL_TEST_REPORT" => report}
+      status = run_suite(environment, output, executable, "--", RbConfig.ruby,
+                         "-I#{File.expand_path("../lib", __dir__)}", Gem.bin_path("rspec-core", "rspec"), fixture)
+
+      expect(status).not_to be_success
+      expect(File.read(output)).not_to include("Device or resource busy")
+      expect(::JSON.parse(File.read(report)).dig("violations", 0, "example", "description")).to include("connects")
+    end
+  end
+
   it "fails an RSpec suite even after its reporter thread dies" do
     Dir.mktmpdir do |directory|
       report = File.join(directory, "report.json")
@@ -378,6 +394,22 @@ RSpec.describe "Linux supervision" do
 
       expect(status).not_to be_success
       expect(File).to exist(report), File.read(output)
+      expect(::JSON.parse(File.read(report)).dig("violations", 0, "example", "description")).to include("test_connects")
+    end
+  end
+
+  it "reuses CLI supervision when a Minitest suite loads the integration" do
+    Dir.mktmpdir do |directory|
+      report = File.join(directory, "report.json")
+      output = File.join(directory, "subprocess.log")
+      fixture = File.expand_path("fixtures/in_process_minitest.rb", __dir__)
+      executable = File.expand_path("../exe/straycall", __dir__)
+      environment = {"STRAYCALL_TEST_REPORT" => report}
+      status = run_suite(environment, output, executable, "--", RbConfig.ruby,
+                         "-I#{File.expand_path("../lib", __dir__)}", fixture)
+
+      expect(status).not_to be_success
+      expect(File.read(output)).not_to include("Device or resource busy")
       expect(::JSON.parse(File.read(report)).dig("violations", 0, "example", "description")).to include("test_connects")
     end
   end

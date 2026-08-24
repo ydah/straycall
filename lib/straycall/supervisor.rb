@@ -8,6 +8,7 @@ require_relative "reporter/symbolizer"
 require_relative "prompt"
 require_relative "handlers/filesystem"
 require_relative "handlers/exec"
+require "shellwords"
 
 module Straycall
   class Supervisor
@@ -40,7 +41,8 @@ module Straycall
         reporter = File.expand_path("target", __dir__)
         inherited_rubyopt = environment.key?("RUBYOPT") ? environment["RUBYOPT"] : ENV["RUBYOPT"]
         environment["STRAYCALL_REPORT_FD"] = target_socket.fileno.to_s
-        environment["RUBYOPT"] = ["-r#{reporter}", inherited_rubyopt].compact.join(" ")
+        environment["STRAYCALL_REPORT_PID"] = Process.pid.to_s
+        environment["RUBYOPT"] = [Shellwords.escape("-r#{reporter}"), inherited_rubyopt].compact.join(" ")
         exec(environment, *argv)
       end
       target_socket.close
