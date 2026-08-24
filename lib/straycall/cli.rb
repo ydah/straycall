@@ -24,7 +24,7 @@ module Straycall
       status, violations = Supervisor.new(Straycall.config).run(@argv)
       if Straycall.config.on_violation == :record
         require_relative "recorder"
-        Recorder.new(@policy_path).write(violations)
+        Recorder.new(@policy_path, force: @force).write(violations)
       end
       return 1 if violations.any? { |violation| violation.action == :denied }
 
@@ -50,6 +50,7 @@ module Straycall
         options.on("--report-path PATH") { |value| @config_actions << ->(config) { config.report_path = value } }
         options.on("--record") { @config_actions << ->(config) { config.on_violation = :record } }
         options.on("--policy-path PATH") { |value| @policy_path = value }
+        options.on("--force") { @force = true }
         options.on("--warn") { @config_actions << ->(config) { config.on_violation = :warn } }
         options.on("--prompt") { @config_actions << ->(config) { config.on_violation = :prompt } }
         options.on("--preset NAME") { |value| @config_actions << ->(config) { apply_preset(config, value) } }
@@ -57,7 +58,7 @@ module Straycall
       parser.order!(@argv)
       @argv.shift if @argv.first == "--"
       raise OptionParser::MissingArgument, "command" if @argv.empty?
-      @policy_path ||= ".straycall.yml"
+      @policy_path ||= ".straycall.recorded.yml"
       Straycall.config = @config_path ? Config.load(@config_path) : Straycall.config
       @config_actions.each { |action| action.call(Straycall.config) }
     end

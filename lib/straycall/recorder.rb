@@ -5,8 +5,9 @@ require "fileutils"
 
 module Straycall
   class Recorder
-    def initialize(path = ".straycall.yml")
+    def initialize(path = ".straycall.recorded.yml", force: false)
       @path = path
+      @force = force
     end
 
     def write(violations)
@@ -19,7 +20,7 @@ module Straycall
       end.uniq
       unix = violations.filter_map { |item| item.target[:path] if item.target[:type] == "unix" && item.target[:path] != "?" }.uniq
       writes = violations.filter_map do |item|
-        File.dirname(item.target[:path]) if item.target[:type] == "file" && item.target[:path] != "?"
+        item.target[:path] if item.target[:type] == "file" && item.target[:path] != "?" && item.target[:operation] != "read"
       end.uniq
       executables = violations.filter_map do |item|
         item.target[:path] if item.target[:type] == "exec" && item.target[:path] != "?"
@@ -31,8 +32,11 @@ module Straycall
         "on_violation" => "fail"
       }
       FileUtils.mkdir_p(File.dirname(@path))
-      File.write(@path, YAML.dump(policy))
+      flags = File::WRONLY | File::CREAT | (@force ? File::TRUNC : File::EXCL)
+      File.open(@path, flags, 0o644) { |file| file.write(YAML.dump(policy)) }
       @path
+    rescue Errno::EEXIST
+      raise ConfigurationError, "refusing to overwrite #{@path}; pass --force to replace it"
     end
   end
 end

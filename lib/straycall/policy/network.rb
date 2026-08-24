@@ -49,10 +49,14 @@ module Straycall
 
       def allowed?(address)
         return true if @default == :allow
-        return @unix.any? { |prefix| address.unix_path.start_with?(prefix) } if address.unix?
+        if address.unix?
+          path = address.unix_path
+          return @unix.any? { |prefix| path == prefix || path.start_with?(File.join(prefix, "")) }
+        end
         return false unless address.ip?
 
         ip = IPAddr.new(address.ip_address.split("%", 2).first)
+        ip = ip.native if ip.ipv4_mapped?
         @inet.any? do |rule|
           rule.address.include?(ip) && (rule.ports.nil? || rule.ports.any? { |port| port === address.ip_port })
         end
@@ -71,7 +75,8 @@ module Straycall
       def normalize_ports(ports)
         return if ports.nil?
 
-        Array(ports).each do |port|
+        ports = [ports] unless ports.is_a?(Array)
+        ports.each do |port|
           next if port.is_a?(Range) && port.begin.is_a?(Integer) && port.end.is_a?(Integer) && port.begin.between?(1, port.end) && port.end <= 65_535
           next if port.is_a?(Integer) && (1..65_535).cover?(port)
 

@@ -45,7 +45,7 @@ module Straycall
         filesystem = @config.filesystem
         write = filesystem.write?(flags)
         denied = write ? !filesystem.allowed_write?(path) : filesystem.denied_read?(path)
-        target = {type: "file", path:, flags:}
+        target = {type: "file", path:, flags:, operation: write ? "write" : "read"}
         if denied || (@config.on_violation == :record && write)
           suggestion = write ? %(allow_write_under #{File.dirname(path).inspect}) : nil
           record_violation(request, target, suggestion)

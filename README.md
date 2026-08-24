@@ -86,7 +86,7 @@ straycall --report-path tmp/straycall.json -- ruby script.rb
 Record observed access as a reviewable policy:
 
 ```sh
-straycall --record --policy-path .straycall.yml -- bundle exec rspec
+straycall --record -- bundle exec rspec
 ```
 
 Prompt while installing dependencies:
@@ -105,6 +105,8 @@ straycall --preset=bundle-install -- bundle install
 | `prompt` | Ask through `/dev/tty`; deny when no TTY is available |
 
 The default mode is `fail`.
+
+Record mode writes `.straycall.recorded.yml` and refuses to replace an existing file. Review it before moving it to `.straycall.yml`; pass `--force` only when replacing a previous recording intentionally.
 
 ## Configuration
 

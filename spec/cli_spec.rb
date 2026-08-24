@@ -25,4 +25,13 @@ RSpec.describe Straycall::CLI do
 
     expect(described_class.new([]).send(:child_exit_code, status)).to eq(128 + Signal.list.fetch("KILL"))
   end
+
+
+  it "records to a separate policy path by default" do
+    cli = described_class.new(["--record", "--", "true"])
+
+    cli.send(:parse!)
+
+    expect(cli.instance_variable_get(:@policy_path)).to eq(".straycall.recorded.yml")
+  end
 end

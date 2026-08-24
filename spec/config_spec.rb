@@ -17,7 +17,15 @@ RSpec.describe Straycall::Config do
     config.allow_unix("/tmp/postgres")
 
     expect(config.network.allowed?(Addrinfo.unix("/tmp/postgres/.s.PGSQL.5432"))).to be(true)
+    expect(config.network.allowed?(Addrinfo.unix("/tmp/postgresql.evil"))).to be(false)
     expect(config.network.allowed?(Addrinfo.unix("/var/run/postgres"))).to be(false)
+  end
+
+
+  it "matches IPv4-mapped IPv6 addresses against IPv4 rules" do
+    config.allow_loopback(ports: 1..65_535)
+
+    expect(config.network.allowed?(Addrinfo.tcp("::ffff:127.0.0.1", 5432))).to be(true)
   end
 
   it "allows all address families when the network default is allow" do
