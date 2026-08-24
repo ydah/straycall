@@ -19,6 +19,7 @@ RSpec.describe Straycall::Config do
     expect(config.network.allowed?(Addrinfo.unix("/tmp/postgres/.s.PGSQL.5432"))).to be(true)
     expect(config.network.allowed?(Addrinfo.unix("/tmp/postgresql.evil"))).to be(false)
     expect(config.network.allowed?(Addrinfo.unix("/var/run/postgres"))).to be(false)
+    expect(config.network.allowed?(Addrinfo.unix("\0postgres"))).to be(false)
   end
 
 

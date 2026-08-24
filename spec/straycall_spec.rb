@@ -17,4 +17,11 @@ RSpec.describe Straycall do
     described_class.configure { |config| config.allow_loopback(ports: [5432]) }
     expect(described_class.config.network.allowed?(Addrinfo.tcp("127.0.0.1", 5432))).to be(true)
   end
+
+  it "warns once when Linux supervision is unavailable" do
+    stub_const("RUBY_PLATFORM", "x86_64-linux")
+
+    expect { 2.times { described_class.warn_unavailable! } }
+      .to output(/running unmonitored/).to_stderr
+  end
 end

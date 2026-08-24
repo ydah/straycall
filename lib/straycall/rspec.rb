@@ -13,7 +13,10 @@ module Straycall
         require_relative "target"
         return configure_hooks if Seccomp::Notify.supervisor_alive?
       end
-      return unless Straycall.available?
+      unless Straycall.available?
+        Straycall.warn_unavailable!
+        return
+      end
 
       require "seccomp/notify"
       require_relative "in_process"

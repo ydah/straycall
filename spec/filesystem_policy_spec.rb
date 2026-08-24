@@ -31,6 +31,13 @@ RSpec.describe Straycall::Policy::Filesystem do
     expect(policy.resolve("tmp/../log/app.log", tid: 42, dirfd: 7)).to eq("/work/project/log/app.log")
   end
 
+  it "removes proc deleted markers before resolving relative paths" do
+    policy = described_class.new
+    allow(File).to receive(:readlink).with("/proc/123/cwd").and_return("/tmp/work (deleted)")
+
+    expect(policy.resolve("file", tid: 123)).to eq("/tmp/work/file")
+  end
+
   it "fails closed when the target process path cannot be resolved" do
     policy = described_class.new
     allow(File).to receive(:readlink).and_raise(Errno::EINVAL)

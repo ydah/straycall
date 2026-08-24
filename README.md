@@ -226,6 +226,7 @@ Console reports include the syscall, target, current test, Ruby backtrace, nativ
 8. A connected `sendto`, `sendmsg`, or `sendmmsg` without an explicit destination relies on the earlier monitored `connect`; Straycall cannot recover a peer address from the target file descriptor.
 9. Listener tracking observes an allowed `bind` before the kernel returns. It prevents accidental auto-bind listeners, but it is not a hostile-code boundary.
 10. In-process integrations only filter the thread that installs seccomp. Load them before starting application threads; Straycall warns when threads already exist.
+11. `ptrace` is denied inside supervised processes, so attach profilers and debuggers from outside the target.
 
 ## Development
 

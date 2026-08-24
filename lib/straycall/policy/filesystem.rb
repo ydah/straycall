@@ -63,7 +63,7 @@ module Straycall
           File.readlink("/proc/#{tid}/cwd")
         else
           File.readlink("/proc/#{tid}/fd/#{signed(dirfd)}")
-        end
+        end.delete_suffix(" (deleted)")
         File.expand_path(path, base)
       rescue SystemCallError => error
         raise PathResolutionError, "cannot resolve target path through /proc: #{error.message}"

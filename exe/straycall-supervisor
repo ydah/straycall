@@ -27,3 +27,4 @@ supervisor = Seccomp::Notify::Supervisor.new(
 guard.register(supervisor)
 health_writer.write("S")
 supervisor.run
+guard.flush_report

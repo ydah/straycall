@@ -221,6 +221,18 @@ RSpec.describe Straycall::Supervisor do
     expect(supervisor.violations.first.target[:path]).to eq("/tmp/outside")
   end
 
+  it "batches report rewrites and flushes the final state" do
+    config.report_path = "/tmp/straycall-report.json"
+    report = instance_double(Straycall::Report::JSON, write: nil)
+    allow(Straycall::Report::JSON).to receive(:new).and_return(report)
+
+    supervisor.send(:write_report)
+    supervisor.send(:write_report)
+    supervisor.flush_report
+
+    expect(report).to have_received(:write).twice
+  end
+
   it "continues a prompted violation when approved" do
     config.on_violation = :prompt
     prompt = instance_double(Straycall::Prompt, allow?: true)

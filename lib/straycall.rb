@@ -34,6 +34,14 @@ module Straycall
 
     def reset!
       @config = Config.new
+      @warned_unavailable = false
+    end
+
+    def warn_unavailable!
+      return if ENV["STRAYCALL"] == "0" || !RUBY_PLATFORM.include?("linux") || @warned_unavailable
+
+      @warned_unavailable = true
+      warn "straycall: seccomp user notifications are unavailable; running unmonitored"
     end
   end
 end

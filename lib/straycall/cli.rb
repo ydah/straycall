@@ -17,7 +17,10 @@ module Straycall
 
     def run
       parse!
-      return exec(*@argv) unless Straycall.available?
+      unless Straycall.available?
+        Straycall.warn_unavailable!
+        return exec(*@argv)
+      end
 
       require "seccomp/notify"
       require_relative "supervisor"

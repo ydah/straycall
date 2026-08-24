@@ -19,6 +19,7 @@ module Straycall
     LOCAL_SOCKET_DOMAINS = Socket.const_defined?(:AF_NETLINK, false) ? [Socket.const_get(:AF_NETLINK, false)].freeze : [].freeze
     MMSGHDR_SIZE = 64
     MAX_MMSG = 1024
+    REPORT_INTERVAL = 0.1
 
     attr_reader :violations
 
@@ -50,7 +51,7 @@ module Straycall
       @reporter = Reporter::Client.new(supervisor_socket)
       register(supervisor)
       status = supervisor.run
-      write_report
+      flush_report
       [status, violations]
     ensure
       target_socket&.close unless target_socket&.closed?
@@ -105,6 +106,10 @@ module Straycall
       supervisor.on(:execve) { |request| handle_exec(request, nil, 0) } if names.include?(:execve)
       supervisor.on(:execveat) { |request| handle_exec(request, 0, 1) } if names.include?(:execveat)
       supervisor
+    end
+
+    def flush_report
+      write_report(force: true)
     end
 
     private
@@ -245,8 +250,14 @@ module Straycall
       %(allow_host #{address.ip_address.inspect}, ports: [#{address.ip_port}])
     end
 
-    def write_report
-      Report::JSON.new(@config.report_path).write(violations) if @config.report_path
+    def write_report(force: false)
+      return unless @config.report_path
+
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      return if !force && @last_report_at && now - @last_report_at < REPORT_INTERVAL
+
+      Report::JSON.new(@config.report_path).write(violations)
+      @last_report_at = now
     end
 
     def report_target(target)
