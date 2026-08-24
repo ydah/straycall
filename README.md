@@ -182,7 +182,7 @@ require "straycall/rspec"
 require "straycall/minitest"
 ```
 
-In-process mode starts a clean detached supervisor with `Process.spawn`, associates violations with the current test, and checks the supervisor health pipe. Prefer the CLI if tests use broad `Process.wait` calls or fork heavily; filters are inherited and cannot be removed.
+In-process mode starts a clean detached supervisor with `Process.spawn`, associates violations with the current test, and checks the supervisor health pipe. When it runs below the `straycall` CLI, it reuses the CLI supervisor instead of installing a second seccomp listener. Prefer the CLI if tests use broad `Process.wait` calls or fork heavily; filters are inherited and cannot be removed.
 
 ### Reports
 
@@ -227,6 +227,8 @@ Console reports include the syscall, target, current test, Ruby backtrace, nativ
 9. Listener tracking observes an allowed `bind` before the kernel returns. It prevents accidental auto-bind listeners, but it is not a hostile-code boundary.
 10. In-process integrations only filter the thread that installs seccomp. Load them before starting application threads; Straycall warns when threads already exist.
 11. `ptrace` is denied inside supervised processes, so attach profilers and debuggers from outside the target.
+12. CLI supervision inherits seccomp-notify 0.2's behavior of closing the listener-transfer descriptor. Hostile code that deliberately reuses that descriptor for `sendmsg` can evade inspection; in-process integrations keep it reserved. Straycall is not a security boundary.
+13. Record mode cannot turn raw socket families or an unbound `listen` into endpoint allow rules; those entries remain in the report for manual policy decisions.
 
 ## Development
 
