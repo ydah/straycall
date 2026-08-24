@@ -2,8 +2,6 @@
 
 module Straycall
   module Policy
-    FORBIDDEN_NOTIFY = %i[read write recvfrom ppoll poll select futex clock_nanosleep rt_sigreturn].freeze
-
     module_function
 
     NETWORK_NOTIFY = %i[socket connect bind listen sendto sendmsg sendmmsg].freeze
@@ -18,7 +16,6 @@ module Straycall
 
     def seccomp(config)
       notified = notification_names(config)
-      validate_notified!(*notified)
 
       conditional = []
       conditional << :openat if notified.include?(:openat) && !config.filesystem.read_denials?
@@ -43,11 +40,5 @@ module Straycall
       names
     end
 
-    def validate_notified!(*names)
-      invalid = names.map(&:to_sym) & FORBIDDEN_NOTIFY
-      raise ConfigurationError, "cannot notify reporter syscall(s): #{invalid.join(", ")}" unless invalid.empty?
-
-      true
-    end
   end
 end
