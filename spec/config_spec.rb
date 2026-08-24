@@ -36,6 +36,15 @@ RSpec.describe Straycall::Config do
     expect(config.network.allowed?(Addrinfo.unix("/tmp/example.sock"))).to be(true)
   end
 
+  it "allows configured socket domains and unbound listeners" do
+    config.allow_socket_domain(17)
+    config.allow_unbound_listen!
+
+    expect(config.network.allowed_domain?(17)).to be(true)
+    expect(config.network.allowed_domain?(16)).to be(false)
+    expect(config.network.unbound_listen_allowed?).to be(true)
+  end
+
   it "keeps io_uring disabled unless explicitly allowed" do
     expect(config.io_uring_allowed?).to be(false)
 
@@ -84,12 +93,15 @@ RSpec.describe Straycall::Config do
         allow:
           - host: registry.example
             ports: [443]
+          - domain: 17
+        allow_unbound_listen: true
       write:
         default: deny
         allow: [tmp]
         deny_read: [~/.ssh]
       exec:
-        default: allow
+        default: deny
+        allow_under: [/usr/bin]
         deny: [/usr/bin/curl]
       on_violation: warn
       report_backtrace: false
@@ -101,8 +113,10 @@ RSpec.describe Straycall::Config do
       loaded = described_class.load(path)
 
       expect(loaded.network.allowed?(Addrinfo.tcp("192.0.2.1", 443))).to be(true)
+      expect(loaded.network.allowed_domain?(17)).to be(true)
+      expect(loaded.network.unbound_listen_allowed?).to be(true)
       expect(loaded.filesystem).to be_active
-      expect(loaded.exec.allowed?("/usr/bin/curl")).to be(false)
+      expect(loaded.exec.allowed?("/usr/bin/ruby")).to be(true)
       expect(loaded.on_violation).to eq(:warn)
       expect(loaded.report_backtrace).to be(false)
     end

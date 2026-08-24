@@ -108,6 +108,16 @@ RSpec.describe Straycall::Supervisor do
     expect(supervisor.violations.first.target).to include(type: "socket", domain: unsupported_domain)
   end
 
+  it "allows configured socket families" do
+    config.allow_socket_domain(999)
+    request = request_for(nil, syscall: :socket, args: [999, Socket::SOCK_RAW, 0])
+
+    supervisor.send(:handle_socket, request)
+
+    expect(request).to have_received(:continue!).with(no_args)
+    expect(supervisor.violations).to be_empty
+  end
+
   it "describes unsupported socket families in prompts" do
     config.on_violation = :prompt
     prompt = instance_double(Straycall::Prompt, allow?: false)
@@ -126,6 +136,17 @@ RSpec.describe Straycall::Supervisor do
 
     expect(request).to have_received(:error!).with(Errno::EPERM)
     expect(supervisor.violations.first.target).to include(type: "socket", operation: "listen")
+  end
+
+  it "allows an unbound listener only when configured" do
+    config.allow_unbound_listen!
+    request = request_for(nil, syscall: :listen, args: [5, 1])
+    allow(File).to receive(:readlink).with("/proc/123/fd/5").and_return("socket:[42]")
+
+    supervisor.send(:handle_listen, request)
+
+    expect(request).to have_received(:continue!).with(no_args)
+    expect(supervisor.violations).to be_empty
   end
 
   it "allows listen after an allowed bind on the same socket" do

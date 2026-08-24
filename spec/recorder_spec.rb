@@ -9,7 +9,9 @@ RSpec.describe Straycall::Recorder do
       Straycall::Violation.new(:connect, 1, {type: "inet", host: "192.0.2.1", port: 443}, nil, nil, :allowed, nil, nil),
       Straycall::Violation.new(:openat, 1, {type: "file", path: "/work/tmp/a", operation: "write"}, nil, nil, :allowed, nil, nil),
       Straycall::Violation.new(:openat, 1, {type: "file", path: "/home/me/.ssh/config", operation: "read"}, nil, nil, :allowed, nil, nil),
-      Straycall::Violation.new(:execve, 1, {type: "exec", path: "/usr/bin/git"}, nil, nil, :allowed, nil, nil)
+      Straycall::Violation.new(:execve, 1, {type: "exec", path: "/usr/bin/git"}, nil, nil, :allowed, nil, nil),
+      Straycall::Violation.new(:socket, 1, {type: "socket", domain: 17, operation: "socket"}, nil, nil, :allowed, nil, nil),
+      Straycall::Violation.new(:listen, 1, {type: "socket", fd: 8, operation: "listen"}, nil, nil, :allowed, nil, nil)
     ]
 
     Dir.mktmpdir do |directory|
@@ -18,6 +20,8 @@ RSpec.describe Straycall::Recorder do
       policy = YAML.safe_load_file(path)
 
       expect(policy.dig("network", "allow", 0, "ports")).to eq([443])
+      expect(policy.dig("network", "allow")).to include("domain" => 17)
+      expect(policy.dig("network", "allow_unbound_listen")).to be(true)
       expect(policy.dig("write", "allow")).to eq(["/work/tmp/a"])
       expect(policy.dig("exec", "allow")).to eq(["/usr/bin/git"])
     end

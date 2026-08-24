@@ -119,6 +119,8 @@ network:
     - host: 127.0.0.1
       ports: [5432, 6379]
     - unix: /var/run/postgresql/.s.PGSQL.5432
+    - domain: 17 # platform socket-family number
+  allow_unbound_listen: false
 
 write:
   default: deny
@@ -126,8 +128,8 @@ write:
   deny_read: [/etc/shadow, ~/.ssh, ~/.aws, ~/.gem/credentials]
 
 exec:
-  default: allow
-  deny: [/usr/bin/curl, /usr/bin/wget]
+  default: deny
+  allow_under: [/usr/bin]
 
 on_violation: fail
 report_backtrace: true
@@ -137,13 +139,14 @@ report_path: tmp/straycall.json
 | Option | Default | Description |
 |--------|---------|-------------|
 | `network.default` | `deny` | Allow or deny network endpoints not listed in `network.allow` |
+| `network.allow_unbound_listen` | `false` | Permit listeners whose bound endpoint cannot be recovered |
 | `write.default` | `allow` | Allow or deny writes outside `write.allow` |
 | `exec.default` | `allow` | Allow or deny executables outside `exec.allow` |
 | `on_violation` | `fail` | Select `fail`, `warn`, `record`, or `prompt` |
 | `report_backtrace` | `true` | Include Ruby backtraces in reports |
 | `report_path` | unset | Write a versioned JSON report to this path |
 
-Hosts are resolved once while loading the configuration. Paths are expanded, but symbolic links are deliberately not resolved.
+Hosts are resolved once while loading the configuration. Filesystem paths are expanded; executable paths are resolved through symbolic links when possible.
 
 ### Ruby Configuration
 
@@ -155,12 +158,15 @@ Straycall.configure do |config|
   config.allow_loopback ports: [5432, 6379]
   config.allow_host "registry.internal.example", ports: [443]
   config.allow_unix "/var/run/postgresql/.s.PGSQL.5432"
+  config.allow_socket_domain Socket::AF_PACKET
+  config.allow_unbound_listen!
 
   config.allow_write_under "tmp", "log", "coverage", Dir.tmpdir
   config.deny_write_elsewhere!
   config.deny_read "/etc/shadow", "~/.ssh"
 
   config.allow_exec "/usr/bin/git", "/usr/bin/make"
+  config.allow_exec_under "/opt/project/bin"
   config.deny_exec_elsewhere!
   # config.allow_io_uring! # disables complete syscall coverage
 
@@ -227,8 +233,6 @@ Console reports include the syscall, target, current test, Ruby backtrace, nativ
 9. Listener tracking observes an allowed `bind` before the kernel returns. It prevents accidental auto-bind listeners, but it is not a hostile-code boundary.
 10. In-process integrations only filter the thread that installs seccomp. Load them before starting application threads; Straycall warns when threads already exist.
 11. `ptrace` is denied inside supervised processes, so attach profilers and debuggers from outside the target.
-12. CLI supervision inherits seccomp-notify 0.2's behavior of closing the listener-transfer descriptor. Hostile code that deliberately reuses that descriptor for `sendmsg` can evade inspection; in-process integrations keep it reserved. Straycall is not a security boundary.
-13. Record mode cannot turn raw socket families or an unbound `listen` into endpoint allow rules; those entries remain in the report for manual policy decisions.
 
 ## Development
 

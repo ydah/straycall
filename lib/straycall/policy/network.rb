@@ -12,6 +12,8 @@ module Straycall
         @default = :deny
         @inet = []
         @unix = []
+        @domains = []
+        @allow_unbound_listen = false
       end
 
       def deny!
@@ -45,6 +47,24 @@ module Straycall
         end
       rescue SocketError => error
         raise ConfigurationError, "cannot resolve host #{host.inspect}: #{error.message}"
+      end
+
+      def allow_domain(domain)
+        raise ConfigurationError, "socket domains must be non-negative integers" unless domain.is_a?(Integer) && domain >= 0
+
+        @domains << domain
+      end
+
+      def allow_unbound_listen!
+        @allow_unbound_listen = true
+      end
+
+      def allowed_domain?(domain)
+        @default == :allow || @domains.include?(domain)
+      end
+
+      def unbound_listen_allowed?
+        @default == :allow || @allow_unbound_listen
       end
 
       def allowed?(address)

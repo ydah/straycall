@@ -19,6 +19,8 @@ module Straycall
         end
       end.uniq
       unix = violations.filter_map { |item| item.target[:path] if item.target[:type] == "unix" && item.target[:path] != "?" }.uniq
+      domains = violations.filter_map { |item| item.target[:domain] if item.target[:type] == "socket" && item.target[:domain] }.uniq
+      unbound_listen = violations.any? { |item| item.target[:type] == "socket" && item.target[:operation] == "listen" }
       writes = violations.filter_map do |item|
         item.target[:path] if item.target[:type] == "file" && item.target[:path] != "?" && item.target[:operation] != "read"
       end.uniq
@@ -26,7 +28,11 @@ module Straycall
         item.target[:path] if item.target[:type] == "exec" && item.target[:path] != "?"
       end.uniq
       policy = {
-        "network" => {"default" => "deny", "allow" => network + unix.map { |path| {"unix" => path} }},
+        "network" => {
+          "default" => "deny",
+          "allow" => network + unix.map { |path| {"unix" => path} } + domains.map { |domain| {"domain" => domain} },
+          "allow_unbound_listen" => unbound_listen
+        },
         "write" => {"default" => "deny", "allow" => writes},
         "exec" => {"default" => "deny", "allow" => executables},
         "on_violation" => "fail"

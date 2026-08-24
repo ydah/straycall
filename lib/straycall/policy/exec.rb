@@ -6,6 +6,7 @@ module Straycall
       def initialize
         @default = :allow
         @allowed = []
+        @allowed_roots = []
         @denied = []
       end
 
@@ -16,6 +17,11 @@ module Straycall
 
       def deny_elsewhere!
         @default = :deny
+      end
+
+      def allow_under(path)
+        validate_path!(path)
+        @allowed_roots << normalize(path)
       end
 
       def deny(path)
@@ -29,7 +35,7 @@ module Straycall
 
       def allowed?(path)
         path = normalize(path)
-        @default == :allow ? !@denied.include?(path) : @allowed.include?(path)
+        @default == :allow ? !@denied.include?(path) : @allowed.include?(path) || @allowed_roots.any? { |root| under?(path, root) }
       end
 
       private
@@ -44,6 +50,10 @@ module Straycall
         File.realpath(path)
       rescue SystemCallError
         File.expand_path(path)
+      end
+
+      def under?(path, root)
+        path == root || path.start_with?("#{root}#{File::SEPARATOR}")
       end
     end
   end

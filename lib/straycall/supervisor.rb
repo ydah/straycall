@@ -116,7 +116,9 @@ module Straycall
 
     def handle_socket(request)
       domain = request.args[0]
-      return request.continue! if @config.network.allow_all? || ENDPOINT_SOCKET_DOMAINS.include?(domain) || LOCAL_SOCKET_DOMAINS.include?(domain)
+      allowed = ENDPOINT_SOCKET_DOMAINS.include?(domain) || LOCAL_SOCKET_DOMAINS.include?(domain)
+      allowed ||= @config.network.allowed_domain?(domain) && @config.on_violation != :record
+      return request.continue! if allowed
 
       record_violation(request, {type: "socket", domain:, operation: "socket"}, nil)
     end
@@ -139,10 +141,11 @@ module Straycall
     end
 
     def handle_listen(request)
-      return request.continue! if @config.network.allow_all?
+      return request.continue! if @config.network.allow_all? && @config.on_violation != :record
 
       identity = socket_identity(request.tid, request.args[0])
       address = @mutex.synchronize { @bound_sockets[identity] }
+      return request.continue! if !address && @config.network.unbound_listen_allowed? && @config.on_violation != :record
       if address && @config.network.allowed?(address) && @config.on_violation != :record
         return request.continue!
       end

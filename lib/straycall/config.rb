@@ -53,6 +53,14 @@ module Straycall
       network.allow_host(host, ports:)
     end
 
+    def allow_socket_domain(domain)
+      network.allow_domain(domain)
+    end
+
+    def allow_unbound_listen!
+      network.allow_unbound_listen!
+    end
+
     def allow_write_under(*paths)
       paths.each { |path| filesystem.allow_write_under(path) }
     end
@@ -67,6 +75,10 @@ module Straycall
 
     def allow_exec(*paths)
       paths.each { |path| exec.allow(path) }
+    end
+
+    def allow_exec_under(*paths)
+      paths.each { |path| exec.allow_under(path) }
     end
 
     def deny_exec_elsewhere!
@@ -127,29 +139,35 @@ module Straycall
     private
 
     def apply_network(data)
-      validate_keys!(data, %w[default allow], "network")
+      validate_keys!(data, %w[default allow allow_unbound_listen], "network")
       default = key?(data, "default") ? fetch(data, "default") : "deny"
       raise ConfigurationError, "network.default must be allow or deny" unless %w[allow deny].include?(default)
 
       default == "allow" ? network.allow! : network.deny!
       array(data, "allow").each do |rule|
         raise ConfigurationError, "network allow rules must be mappings" unless rule.is_a?(Hash)
-        validate_keys!(rule, %w[host ports unix], "network allow rule")
+        validate_keys!(rule, %w[host ports unix domain], "network allow rule")
 
         unix = key?(rule, "unix")
         host = key?(rule, "host")
-        raise ConfigurationError, "network allow rule requires exactly one of host or unix" if unix == host
+        domain = key?(rule, "domain")
+        raise ConfigurationError, "network allow rule requires exactly one of host, unix, or domain" unless [unix, host, domain].count(true) == 1
 
         if unix
           raise ConfigurationError, "unix network allow rules cannot specify ports" if key?(rule, "ports")
 
           path = fetch(rule, "unix")
           allow_unix(string(path, "unix"))
-        else
+        elsif host
           address = fetch(rule, "host")
           allow_host(string(address, "host"), ports: fetch(rule, "ports"))
+        else
+          raise ConfigurationError, "socket domain rules cannot specify ports" if key?(rule, "ports")
+
+          allow_socket_domain(fetch(rule, "domain"))
         end
       end
+      allow_unbound_listen! if key?(data, "allow_unbound_listen") && boolean(data, "allow_unbound_listen")
     end
 
     def apply_write(data)
@@ -163,11 +181,12 @@ module Straycall
     end
 
     def apply_exec(data)
-      validate_keys!(data, %w[default allow deny], "exec")
+      validate_keys!(data, %w[default allow allow_under deny], "exec")
       default = key?(data, "default") ? fetch(data, "default") : "allow"
       raise ConfigurationError, "exec.default must be allow or deny" unless %w[allow deny].include?(default)
 
       array(data, "allow").each { |path| allow_exec(string(path, "exec.allow")) }
+      array(data, "allow_under").each { |path| allow_exec_under(string(path, "exec.allow_under")) }
       array(data, "deny").each { |path| deny_exec(string(path, "exec.deny")) }
       deny_exec_elsewhere! if default == "deny"
     end

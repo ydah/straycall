@@ -24,4 +24,13 @@ RSpec.describe Straycall::Policy::Exec do
       expect(policy.allowed?(alias_path)).to be(false)
     end
   end
+
+  it "allows executable directory trees without matching adjacent prefixes" do
+    policy = described_class.new
+    policy.allow_under("/opt/tools")
+    policy.deny_elsewhere!
+
+    expect(policy.allowed?("/opt/tools/bin/helper")).to be(true)
+    expect(policy.allowed?("/opt/tools-evil/helper")).to be(false)
+  end
 end
