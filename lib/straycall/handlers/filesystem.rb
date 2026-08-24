@@ -38,6 +38,28 @@ module Straycall
         record_violation(request, {type: "file", path: "?"}, nil)
       end
 
+      def handle_fd_mutation(request, fd)
+        path = File.readlink("/proc/#{request.tid}/fd/#{fd}").delete_suffix(" (deleted)")
+        return request.continue! unless path.start_with?(File::SEPARATOR)
+
+        target = {type: "file", path:, operation: request.syscall.to_s}
+        if !@config.filesystem.allowed_write?(path) || @config.on_violation == :record
+          record_violation(request, target, %(allow_write_under #{File.dirname(path).inspect}))
+        else
+          request.continue!(unsafe: true)
+        end
+      rescue SystemCallError
+        record_violation(request, {type: "file", path: "?", operation: request.syscall.to_s}, nil)
+      end
+
+      def handle_mmap(request)
+        prot = request.args[2]
+        shared = (request.args[3] & 1).positive?
+        return request.continue! unless shared && (prot & 2).positive?
+
+        handle_fd_mutation(request, request.args[4])
+      end
+
       private
 
       def handle_open(request, dirfd, path_address, flags)

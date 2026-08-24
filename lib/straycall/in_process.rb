@@ -9,6 +9,7 @@ module Straycall
     module_function
 
     def install(config, report_socket:, inherited_report_socket:)
+      warn "straycall: existing threads cannot be covered by an in-process seccomp filter" if Dir.children("/proc/self/task").length > 1
       transfer_socket, supervisor_socket = UNIXSocket.pair
       health_reader, health_writer = IO.pipe
       policy = Policy.seccomp(config)
@@ -18,7 +19,7 @@ module Straycall
 
       [supervisor_socket, report_socket, health_writer].each { |io| io.close_on_exec = false }
       inherited_report_socket.close_on_exec = true
-      transfer_socket.close_on_exec = true
+      transfer_socket.close_on_exec = false
       encoded_config = Marshal.dump(config).unpack1("H*")
       clean_environment = ENV.keys.grep(/\A(?:BUNDLE|BUNDLER|RUBY(?:OPT|LIB))/).to_h { |name| [name, nil] }
       load_path = [File.expand_path("..", __dir__), File.join(Gem.loaded_specs.fetch("seccomp-notify").full_gem_path, "lib")].join(File::PATH_SEPARATOR)
@@ -53,7 +54,7 @@ module Straycall
       listener = Seccomp::Notify::Filter.install!(program, flags:)
       Seccomp::Notify::FdPassing.send_fd(transfer_socket, listener)
       listener.close
-      transfer_socket.close
+      @transfer_socket = transfer_socket
       unless IO.select([health_reader], nil, nil, 5) && health_reader.read(1) == "S"
         raise Error, "straycall supervisor failed to initialize"
       end

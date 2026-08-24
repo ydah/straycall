@@ -8,13 +8,16 @@ module Straycall
     module_function
 
     def install
+      if RUBY_PLATFORM.include?("linux") && RUBY_ENGINE == "ruby"
+        require "seccomp/notify"
+        require_relative "target"
+        return configure_hooks if Seccomp::Notify.supervisor_alive?
+      end
       return unless Straycall.available?
 
       require "seccomp/notify"
       require_relative "in_process"
       require_relative "target"
-      return configure_hooks if Seccomp::Notify.supervisor_alive?
-
       supervisor_socket, target_socket = UNIXSocket.pair
       InProcess.install(Straycall.config, report_socket: supervisor_socket, inherited_report_socket: target_socket)
       Target.start(target_socket)

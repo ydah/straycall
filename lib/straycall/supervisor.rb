@@ -16,6 +16,7 @@ module Straycall
     include Handlers::Exec
 
     ENDPOINT_SOCKET_DOMAINS = [Socket::AF_UNIX, Socket::AF_INET, Socket::AF_INET6].freeze
+    LOCAL_SOCKET_DOMAINS = Socket.const_defined?(:AF_NETLINK, false) ? [Socket.const_get(:AF_NETLINK, false)].freeze : [].freeze
     MMSGHDR_SIZE = 64
     MAX_MMSG = 1024
 
@@ -65,13 +66,23 @@ module Straycall
       supervisor.on(:sendmsg) { |request| handle_sendmsg(request) }
       supervisor.on(:sendmmsg) { |request| handle_sendmmsg(request) }
       names = Policy.notification_names(@config)
+      cwd = Policy::Filesystem::AT_FDCWD
       supervisor.on(:openat) { |request| handle_openat(request) } if names.include?(:openat)
       supervisor.on(:openat2) { |request| handle_openat2(request) } if names.include?(:openat2)
       supervisor.on(:unlinkat) { |request| handle_path_mutation(request, request.args[0], request.args[1]) } if names.include?(:unlinkat)
       supervisor.on(:mkdirat) { |request| handle_path_mutation(request, request.args[0], request.args[1]) } if names.include?(:mkdirat)
+      supervisor.on(:symlinkat) { |request| handle_path_mutation(request, request.args[1], request.args[2]) } if names.include?(:symlinkat)
       supervisor.on(:renameat) { |request| handle_rename(request, *request.args.values_at(0, 1, 2, 3)) } if names.include?(:renameat)
       supervisor.on(:renameat2) { |request| handle_rename(request, *request.args.values_at(0, 1, 2, 3)) } if names.include?(:renameat2)
-      cwd = Policy::Filesystem::AT_FDCWD
+      supervisor.on(:linkat) { |request| handle_rename(request, *request.args.values_at(0, 1, 2, 3)) } if names.include?(:linkat)
+      supervisor.on(:truncate) { |request| handle_path_mutation(request, cwd, request.args[0]) } if names.include?(:truncate)
+      supervisor.on(:ftruncate) { |request| handle_fd_mutation(request, request.args[0]) } if names.include?(:ftruncate)
+      supervisor.on(:fchmodat) { |request| handle_path_mutation(request, request.args[0], request.args[1]) } if names.include?(:fchmodat)
+      supervisor.on(:fchmodat2) { |request| handle_path_mutation(request, request.args[0], request.args[1]) } if names.include?(:fchmodat2)
+      supervisor.on(:fchownat) { |request| handle_path_mutation(request, request.args[0], request.args[1]) } if names.include?(:fchownat)
+      supervisor.on(:utimensat) { |request| handle_path_mutation(request, request.args[0], request.args[1]) } if names.include?(:utimensat)
+      supervisor.on(:copy_file_range) { |request| handle_fd_mutation(request, request.args[2]) } if names.include?(:copy_file_range)
+      supervisor.on(:mmap) { |request| handle_mmap(request) } if names.include?(:mmap)
       supervisor.on(:open) { |request| handle_open(request, cwd, request.args[0], request.args[1]) } if names.include?(:open)
       if names.include?(:creat)
         supervisor.on(:creat) do |request|
@@ -81,7 +92,16 @@ module Straycall
       end
       supervisor.on(:unlink) { |request| handle_path_mutation(request, cwd, request.args[0]) } if names.include?(:unlink)
       supervisor.on(:mkdir) { |request| handle_path_mutation(request, cwd, request.args[0]) } if names.include?(:mkdir)
+      supervisor.on(:rmdir) { |request| handle_path_mutation(request, cwd, request.args[0]) } if names.include?(:rmdir)
+      supervisor.on(:symlink) { |request| handle_path_mutation(request, cwd, request.args[1]) } if names.include?(:symlink)
+      %i[chmod chown lchown].each do |name|
+        supervisor.on(name) { |request| handle_path_mutation(request, cwd, request.args[0]) } if names.include?(name)
+      end
+      %i[fchmod fchown].each do |name|
+        supervisor.on(name) { |request| handle_fd_mutation(request, request.args[0]) } if names.include?(name)
+      end
       supervisor.on(:rename) { |request| handle_rename(request, cwd, request.args[0], cwd, request.args[1]) } if names.include?(:rename)
+      supervisor.on(:link) { |request| handle_rename(request, cwd, request.args[0], cwd, request.args[1]) } if names.include?(:link)
       supervisor.on(:execve) { |request| handle_exec(request, nil, 0) } if names.include?(:execve)
       supervisor.on(:execveat) { |request| handle_exec(request, 0, 1) } if names.include?(:execveat)
       supervisor
@@ -91,7 +111,7 @@ module Straycall
 
     def handle_socket(request)
       domain = request.args[0]
-      return request.continue! if @config.network.allow_all? || ENDPOINT_SOCKET_DOMAINS.include?(domain)
+      return request.continue! if @config.network.allow_all? || ENDPOINT_SOCKET_DOMAINS.include?(domain) || LOCAL_SOCKET_DOMAINS.include?(domain)
 
       record_violation(request, {type: "socket", domain:, operation: "socket"}, nil)
     end
@@ -101,6 +121,7 @@ module Straycall
 
       address = request.read_sockaddr(request.args[1], request.args[2])
       return request.error!(Errno::EPERM) unless request.valid?
+      return request.continue!(unsafe: true) unless @config.network.endpoint?(address)
       if @config.network.allowed?(address) && @config.on_violation != :record
         remember_bound_socket(request, address)
         return request.continue!(unsafe: true)
@@ -136,6 +157,7 @@ module Straycall
 
       address = request.read_sockaddr(request.args[address_arg], request.args[length_arg])
       return request.error!(Errno::EPERM) unless request.valid?
+      return request.continue!(unsafe: true) unless @config.network.endpoint?(address)
       if @config.network.allowed?(address) && @config.on_violation != :record
         return request.continue!(unsafe: true)
       end
@@ -153,6 +175,7 @@ module Straycall
 
       address = request.read_sockaddr(name, length)
       return request.error!(Errno::EPERM) unless request.valid?
+      return request.continue!(unsafe: true) unless @config.network.endpoint?(address)
       if @config.network.allowed?(address) && @config.on_violation != :record
         return request.continue!(unsafe: true)
       end
@@ -173,6 +196,7 @@ module Straycall
         request.read_sockaddr(name, length) unless name.zero? || length.zero?
       end
       return request.error!(Errno::EPERM) unless request.valid?
+      destinations.select! { |address| @config.network.endpoint?(address) }
       observed = if @config.on_violation == :record
         destinations
       else

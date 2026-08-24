@@ -62,6 +62,10 @@ module Straycall
         end
       end
 
+      def endpoint?(address)
+        address.unix? || address.ip?
+      end
+
       def allow_all?
         @default == :allow
       end

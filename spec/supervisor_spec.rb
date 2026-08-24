@@ -151,6 +151,17 @@ RSpec.describe Straycall::Supervisor do
     expect(supervisor.violations).to be_empty
   end
 
+
+  it "leaves admitted non-endpoint socket addresses to the kernel" do
+    address = instance_double(Addrinfo, unix?: false, ip?: false)
+    request = request_for(address)
+
+    supervisor.send(:handle_address, request, 1, 2)
+
+    expect(request).to have_received(:continue!).with(unsafe: true)
+    expect(supervisor.violations).to be_empty
+  end
+
   it "continues a connected sendto that omits its already-checked destination" do
     request = request_for(nil, syscall: :sendto, args: [0, 1, 2, 3, 0, 0])
 
@@ -193,6 +204,18 @@ RSpec.describe Straycall::Supervisor do
     )
 
     supervisor.send(:handle_openat, request)
+
+    expect(request).to have_received(:error!).with(Errno::EPERM)
+    expect(supervisor.violations.first.target[:path]).to eq("/tmp/outside")
+  end
+
+
+  it "denies shared writable mappings outside configured roots" do
+    config.deny_write_elsewhere!
+    request = request_for(nil, syscall: :mmap, args: [0, 4096, 2, 1, 5, 0])
+    allow(File).to receive(:readlink).with("/proc/123/fd/5").and_return("/tmp/outside (deleted)")
+
+    supervisor.send(:handle_mmap, request)
 
     expect(request).to have_received(:error!).with(Errno::EPERM)
     expect(supervisor.violations.first.target[:path]).to eq("/tmp/outside")

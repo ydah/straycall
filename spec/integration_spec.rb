@@ -62,6 +62,22 @@ RSpec.describe "Linux supervision" do
     end
   end
 
+
+  it "denies filesystem mutations outside configured roots" do
+    config = Straycall::Config.new
+    config.deny_write_elsewhere!
+    script = <<~'RUBY'
+      File.symlink("target", "/tmp/straycall-link") rescue Errno::EPERM
+      File.truncate("/tmp/straycall-file", 0) rescue Errno::EPERM
+      Dir.rmdir("/tmp/straycall-directory") rescue Errno::EPERM
+    RUBY
+
+    _status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(violations.map { |violation| violation.target[:path] })
+      .to include("/tmp/straycall-link", "/tmp/straycall-file", "/tmp/straycall-directory")
+  end
+
   it "denies openat2 writes outside configured roots" do
     config = Straycall::Config.new
     config.deny_write_elsewhere!
@@ -243,6 +259,18 @@ RSpec.describe "Linux supervision" do
     expect(violations.map(&:syscall)).to include(:socket)
   end
 
+
+  it "allows local netlink sockets without endpoint policy noise" do
+    skip "AF_NETLINK is unavailable" unless Socket.const_defined?(:AF_NETLINK, false)
+    config = Straycall::Config.new
+    script = "require 'socket'; Socket.new(Socket::AF_NETLINK, Socket::SOCK_RAW, 0).close"
+
+    status, violations = Straycall::Supervisor.new(config).run([clean_ruby_env, RbConfig.ruby, "-e", script])
+
+    expect(status).to be_success
+    expect(violations).to be_empty
+  end
+
   it "denies sendmmsg destinations" do
     config = Straycall::Config.new
     script = <<~'RUBY'
@@ -333,7 +361,7 @@ RSpec.describe "Linux supervision" do
       fixture = File.expand_path("fixtures/in_process_suite.rb", __dir__)
       executable = File.expand_path("../exe/straycall", __dir__)
       environment = {"STRAYCALL_TEST_REPORT" => report}
-      status = run_suite(environment, output, executable, "--", RbConfig.ruby,
+      status = run_suite(environment, output, executable, "--report-path", report, "--", RbConfig.ruby,
                          "-I#{File.expand_path("../lib", __dir__)}", Gem.bin_path("rspec-core", "rspec"), fixture)
 
       expect(status).not_to be_success
@@ -405,7 +433,7 @@ RSpec.describe "Linux supervision" do
       fixture = File.expand_path("fixtures/in_process_minitest.rb", __dir__)
       executable = File.expand_path("../exe/straycall", __dir__)
       environment = {"STRAYCALL_TEST_REPORT" => report}
-      status = run_suite(environment, output, executable, "--", RbConfig.ruby,
+      status = run_suite(environment, output, executable, "--report-path", report, "--", RbConfig.ruby,
                          "-I#{File.expand_path("../lib", __dir__)}", fixture)
 
       expect(status).not_to be_success

@@ -225,6 +225,7 @@ Console reports include the syscall, target, current test, Ruby backtrace, nativ
 7. If the supervisor dies, the kernel returns `ENOSYS`; integrations detect the health-pipe closure as soon as they regain control.
 8. A connected `sendto`, `sendmsg`, or `sendmmsg` without an explicit destination relies on the earlier monitored `connect`; Straycall cannot recover a peer address from the target file descriptor.
 9. Listener tracking observes an allowed `bind` before the kernel returns. It prevents accidental auto-bind listeners, but it is not a hostile-code boundary.
+10. In-process integrations only filter the thread that installs seccomp. Load them before starting application threads; Straycall warns when threads already exist.
 
 ## Development
 

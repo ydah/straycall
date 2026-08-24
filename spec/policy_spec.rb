@@ -15,12 +15,23 @@ RSpec.describe Straycall::Policy do
     expect(described_class.notification_names(config)).to include(:openat, :execve)
   end
 
+
+  it "skips network notifications when all networking is allowed" do
+    config = Straycall::Config.new
+    config.network.allow!
+
+    expect(described_class.notification_names(config)).not_to include(:socket, :connect, :sendmsg)
+
+    config.on_violation = :record
+    expect(described_class.notification_names(config)).to include(:socket, :connect, :sendmsg)
+  end
+
   it "includes legacy x86 filesystem entry points" do
     stub_const("RUBY_PLATFORM", "x86_64-linux")
     config = Straycall::Config.new
     config.deny_write_elsewhere!
 
-    expect(described_class.notification_names(config)).to include(:open, :creat, :unlink, :rename, :mkdir)
+    expect(described_class.notification_names(config)).to include(:open, :creat, :unlink, :rename, :mkdir, :rmdir, :symlink)
   end
 
   it "uses a conditional openat notification unless reads are denied" do
