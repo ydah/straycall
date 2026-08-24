@@ -2,7 +2,7 @@
 
 All notable changes to Straycall are documented here.
 
-## v0.2.0 - 2026-08-24
+## v0.3.0 - 2026-08-24
 
 - Reuse CLI supervision from RSpec and Minitest integrations and prevent descendant Ruby processes from consuming another process's reporter messages.
 - Keep listener-transfer descriptors reserved and warn when in-process installation cannot cover existing threads.
