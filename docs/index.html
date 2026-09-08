@@ -3,184 +3,123 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Straycall reports and blocks unintended network, filesystem, and process access from Ruby builds and test suites.">
-    <meta name="theme-color" content="#07111b">
-    <meta property="og:title" content="Straycall — Catch unintended syscalls in Ruby tests">
-    <meta property="og:description" content="Report and block unintended network, filesystem, and process access from Ruby builds and test suites.">
+    <meta name="description" content="Catch unintended network, filesystem, and process access in Ruby builds and tests. Straycall reports the syscall and the Ruby code behind it.">
+    <meta name="theme-color" content="#f8fafc">
+    <meta property="og:title" content="Straycall — Know what your Ruby tests touch">
+    <meta property="og:description" content="Catch unintended network, filesystem, and process access. Get a report that points back to your Ruby code.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://ydah.github.io/straycall/">
-    <title>Straycall — Syscall guard for Ruby tests</title>
+    <title>Straycall — Know what your Ruby tests touch</title>
     <link rel="canonical" href="https://ydah.github.io/straycall/">
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body id="top">
     <a class="skip-link" href="#main">Skip to content</a>
-
-    <header class="site-header">
+    <header class="site-header shell">
       <a class="brand" href="#top" aria-label="Straycall home">
-        <span class="brand-mark" aria-hidden="true">S/</span>
-        <span>Straycall</span>
+        <svg class="size-8 text-sky-700" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M4 8h9l10 16h5M4 24h9L23 8h5" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M24 4l4 4-4 4M24 20l4 4-4 4" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Straycall
       </a>
       <nav aria-label="Primary navigation">
-        <a href="#features">Guardrails</a>
+        <a href="#features">What it catches</a>
         <a href="#quick-start">Quick start</a>
-        <a href="#policy">Policy</a>
-        <a class="nav-cta" href="https://github.com/ydah/straycall">View on GitHub</a>
+        <a class="github-link" href="https://github.com/ydah/straycall">GitHub <svg class="size-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
       </nav>
     </header>
 
     <main id="main">
-      <section class="hero" aria-labelledby="hero-title">
+      <section class="hero shell" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="eyebrow">Linux syscall guard for Ruby</p>
-          <h1 id="hero-title">Catch the calls your tests <em>didn't mean to make.</em></h1>
-          <p class="hero-lede">
-            Straycall reports and blocks unintended network, filesystem, and process access from Ruby builds and test suites—then points to the responsible Ruby code.
-          </p>
-          <div class="hero-actions">
+          <p class="intro">A syscall guard for Ruby builds &amp; tests</p>
+          <h1 id="hero-title">Know what<br>your tests touch.</h1>
+          <p class="hero-lede">That unexpected API call. That file written outside <code>tmp/</code>. That subprocess you never asked for.</p>
+          <p class="hero-description">Straycall catches unintended system calls and points back to the Ruby code that made them.</p>
+          <div class="actions">
             <a class="button button-primary" href="#quick-start">Get started</a>
-            <a class="button button-secondary" href="https://rubygems.org/gems/straycall">View on RubyGems</a>
+            <a class="button button-secondary" href="https://github.com/ydah/straycall#readme">Read the docs</a>
           </div>
-          <ul class="support-list" aria-label="Platform support">
-            <li>Linux 5.5+</li>
-            <li>MRI Ruby 3.1+</li>
-            <li>x86_64 &amp; arm64</li>
-          </ul>
+          <p class="hero-note">Open source. MIT licensed. Made for your test suite.</p>
         </div>
 
-        <div class="terminal" aria-label="Example Straycall violation report">
-          <div class="terminal-bar" aria-hidden="true">
-            <p>bundle exec rspec</p>
+        <figure class="report-example">
+          <div class="report-top"><span class="report-label"><svg class="size-4" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 7 5 5-5 5m8 0h6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg> Your next test run</span><span class="example-label">Example</span></div>
+          <div class="terminal">
+            <pre aria-label="Example command"><code><span class="code-muted">$</span> bundle exec straycall -- bundle exec rspec</code></pre>
+            <div class="report-finding"><span class="finding-icon" aria-hidden="true">!</span><div><strong>An unexpected connection.</strong><span>Caught before it leaves your process.</span></div><span class="status">Blocked</span></div>
+            <pre class="report-output" aria-label="Example Straycall console output"><code><span class="code-accent">straycall: connect(2)</span> → 192.0.2.1:443
+    app/services/sync.rb:14:in `fetch'
+    spec/services/sync_spec.rb:27:in `block'
+  hint: allow_host "192.0.2.1", ports: [443]</code></pre>
+            <div class="report-explanation"><span class="explanation-rule" aria-hidden="true"></span><p>The call. The destination.<br><strong>The Ruby code behind it.</strong></p></div>
           </div>
-          <pre><code><span class="prompt">$</span> straycall -- bundle exec rspec
-
-<span class="accent">straycall:</span> connect(2) → 192.0.2.1:443
-    spec/services/sync_spec.rb:27:in &#96;fetch'
-    app/services/sync.rb:14:in &#96;call'
-
-  <span class="hint">hint:</span> allow_host "192.0.2.1", ports: [443]
-
-<span class="failure">1 example, 1 syscall violation</span></code></pre>
-        </div>
+          <figcaption><span class="size-2 rounded-full bg-sky-700" aria-hidden="true"></span> Real syscalls, with Ruby backtraces when available.</figcaption>
+        </figure>
       </section>
 
-      <section class="section" id="features" aria-labelledby="features-title">
-        <div class="section-heading">
-          <p class="kicker">Guardrails</p>
-          <h2 id="features-title">Three boundaries. One useful report.</h2>
-          <p>Keep accidental side effects out of builds and tests without losing the context needed to fix them.</p>
-        </div>
+      <div class="compatibility shell">
+        <p>Runs where your Ruby CI runs.</p>
+        <ul aria-label="Requirements"><li>Linux 5.5+</li><li>MRI Ruby 3.1+</li><li>x86_64 / aarch64</li></ul>
+        <a href="#requirements">Compatibility details</a>
+      </div>
+
+      <section class="section shell" id="features" aria-labelledby="features-title">
+        <div class="section-heading"><h2 id="features-title">Small side effects.<br>Real consequences.</h2><p>A passing test can still call an external service, write to the wrong directory, or launch a command. Set the boundaries your suite should stay inside.</p></div>
         <div class="feature-grid">
-          <article class="feature-card">
-            <span class="feature-index" aria-hidden="true">01</span>
-            <h3>Network</h3>
-            <p>Control outbound connections, Unix sockets, binds, and listeners by host and port.</p>
-            <code>deny_network!</code>
+          <article class="feature">
+            <svg class="feature-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true"><circle cx="16" cy="16" r="11"/><ellipse cx="16" cy="16" rx="5" ry="11"/><path d="M5 16h22M7 10h18M7 22h18"/></svg>
+            <h3>Keep connections intentional.</h3><p>Allow your local database. Catch the forgotten HTTP request. Set rules for hosts, ports, Unix sockets, binds, and listeners.</p><code>config.deny_network!</code>
           </article>
-          <article class="feature-card">
-            <span class="feature-index" aria-hidden="true">02</span>
-            <h3>Filesystem</h3>
-            <p>Allow writes only below known roots and report reads of sensitive paths.</p>
-            <code>deny_write_elsewhere!</code>
+          <article class="feature">
+            <svg class="feature-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M4 10V7h10l3 4h11v15H4V10Z"/><path d="M4 15h24"/></svg>
+            <h3>Give writes a place to go.</h3><p>Keep generated files under allowed roots like <code>tmp/</code> and <code>coverage/</code>. Flag reads of sensitive paths, too.</p><code>config.deny_write_elsewhere!</code>
           </article>
-          <article class="feature-card">
-            <span class="feature-index" aria-hidden="true">03</span>
-            <h3>Processes</h3>
-            <p>Restrict executables to an explicit allow list and see where each launch began.</p>
-            <code>deny_exec_elsewhere!</code>
+          <article class="feature">
+            <svg class="feature-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true"><rect x="4" y="5" width="24" height="22" rx="3"/><path d="m9 12 4 4-4 4m8 0h6"/></svg>
+            <h3>Know what gets launched.</h3><p>Allow the executables your build needs. Report unexpected process launches with the context you need to investigate.</p><code>config.deny_exec_elsewhere!</code>
           </article>
         </div>
       </section>
 
-      <section class="section split" id="quick-start" aria-labelledby="quick-start-title">
-        <div class="section-heading">
-          <p class="kicker">Quick start</p>
-          <h2 id="quick-start-title">Install. Wrap. Inspect.</h2>
-          <p>The CLI keeps the supervisor outside the filtered command, so it stays out of your test runner's process handling.</p>
+      <section class="setup-band" id="quick-start" aria-labelledby="quick-start-title">
+        <div class="shell setup-grid">
+          <div class="setup-copy"><h2 id="quick-start-title">Same test command.<br>More visibility.</h2><p>Add the gem, then wrap your command. Straycall supervises it from a separate process.</p><a class="text-link" href="https://github.com/ydah/straycall#integrations">Using RSpec or Minitest?</a><p class="setup-note">Start by recording what your suite touches. Review the policy before enforcing it.</p></div>
+          <ol class="steps">
+            <li><h3><span>1</span>Add to your Gemfile</h3><pre><code><span class="comment"># Gemfile</span>
+gem "straycall"</code></pre><pre><code>bundle install</code></pre></li>
+            <li><h3><span>2</span>Record a test run</h3><pre><code>bundle exec straycall --record -- bundle exec rspec</code></pre><p>Writes <code>.straycall.recorded.yml</code>. Review the observed access and save your approved policy as <code>.straycall.yml</code>.</p></li>
+            <li><h3><span>3</span>Run with your policy</h3><pre><code>bundle exec straycall --config .straycall.yml -- bundle exec rspec</code></pre><p>With the default <code>fail</code> mode, disallowed calls are blocked and the command exits nonzero.</p></li>
+          </ol>
         </div>
-        <ol class="steps">
-          <li>
-            <div class="step-heading"><span>1</span><h3>Add the gem</h3></div>
-            <pre><code><span class="muted"># Gemfile</span>
-gem "straycall"</code></pre>
-          </li>
-          <li>
-            <div class="step-heading"><span>2</span><h3>Wrap a command</h3></div>
-            <pre><code>straycall --config .straycall.yml -- bundle exec rspec</code></pre>
-          </li>
-          <li>
-            <div class="step-heading"><span>3</span><h3>Choose the response</h3></div>
-            <div class="mode-list">
-              <p><code>fail</code><span>Block and exit nonzero</span></p>
-              <p><code>warn</code><span>Allow and report</span></p>
-              <p><code>record</code><span>Generate a reviewable policy</span></p>
-              <p><code>prompt</code><span>Ask through the terminal</span></p>
-            </div>
-          </li>
-        </ol>
       </section>
 
-      <section class="section policy-section" id="policy" aria-labelledby="policy-title">
-        <div class="policy-copy">
-          <p class="kicker">Policy as code</p>
-          <h2 id="policy-title">Specific enough to trust.<br>Small enough to review.</h2>
-          <p>Keep the policy beside the project. Hosts resolve once at load time; paths expand without silently resolving symbolic links.</p>
-          <a class="text-link" href="https://github.com/ydah/straycall#yaml-policy">Read the configuration reference <span aria-hidden="true">→</span></a>
-        </div>
-        <div class="code-panel">
-          <p>.straycall.yml</p>
-          <pre><code><span class="key">network:</span>
-  <span class="key">default:</span> deny
-  <span class="key">allow:</span>
-    - <span class="key">host:</span> 127.0.0.1
-      <span class="key">ports:</span> [5432, 6379]
+      <section class="section shell policy-grid" id="policy" aria-labelledby="policy-title">
+        <div class="policy-copy"><h2 id="policy-title">Your project.<br>Your boundaries.</h2><p>Keep a readable YAML policy next to your code. Allow the database ports you use, the directories you write to, and the tools your build needs.</p><a class="text-link" href="https://github.com/ydah/straycall#configuration">Read the configuration reference</a><div class="policy-note"><svg class="size-5 shrink-0 text-sky-700" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><p>Prefer Ruby? Configure the same rules with <code>Straycall.configure</code>.</p></div></div>
+        <figure class="policy-code"><figcaption>.straycall.yml <span>Example policy</span></figcaption><pre><code><span class="key">network:</span>
+  default: deny
+  allow:
+    - host: 127.0.0.1
+      ports: [5432, 6379]
 
 <span class="key">write:</span>
-  <span class="key">default:</span> deny
-  <span class="key">allow:</span> [tmp, log, coverage]
-  <span class="key">deny_read:</span> [~/.ssh, ~/.aws]
+  default: deny
+  allow: [tmp, log, coverage]
+  deny_read: [~/.ssh, ~/.aws]
 
 <span class="key">exec:</span>
-  <span class="key">default:</span> allow
-  <span class="key">deny:</span> [/usr/bin/curl]
+  default: deny
+  allow: [/usr/bin/git]
 
-<span class="key">on_violation:</span> fail</code></pre>
-        </div>
+<span class="key">on_violation:</span> fail</code></pre></figure>
       </section>
 
-      <section class="section" aria-labelledby="how-title">
-        <div class="section-heading">
-          <p class="kicker">How it works</p>
-          <h2 id="how-title">Outside the process. Close to the call.</h2>
-        </div>
-        <div class="flow" role="list">
-          <div role="listitem"><span>01</span><h3>Observe</h3><p>Linux pauses selected syscalls through seccomp user notifications.</p></div>
-          <div role="listitem"><span>02</span><h3>Decide</h3><p>An unfiltered supervisor evaluates the target against your policy.</p></div>
-          <div role="listitem"><span>03</span><h3>Explain</h3><p>The report joins the syscall target with the responsible Ruby backtrace.</p></div>
-        </div>
-      </section>
+      <section class="modes shell" aria-labelledby="modes-title"><div class="modes-heading"><h2 id="modes-title">Choose how to respond.</h2><p>Observe first. Enforce when you’re ready.</p></div><dl class="mode-grid"><div><dt><code>fail</code><span>Default</span></dt><dd>Deny the call with <code>EPERM</code> and exit nonzero.</dd></div><div><dt><code>warn</code></dt><dd>Allow the call and report the violation.</dd></div><div><dt><code>record</code></dt><dd>Allow calls and write a policy for you to review.</dd></div><div><dt><code>prompt</code></dt><dd>Ask in the terminal. Deny when no TTY is available.</dd></div></dl></section>
 
-      <aside class="boundary" aria-labelledby="boundary-title">
-        <p class="kicker">An honest boundary</p>
-        <h2 id="boundary-title">Built to catch accidents—not hostile code.</h2>
-        <p>Pointer-based checks, symbolic links, existing file descriptors, and kernel interfaces outside seccomp's reach leave intentional escape routes. Use Straycall as a test guardrail, not a security sandbox.</p>
-      </aside>
+      <section class="section shell requirements-grid" id="requirements" aria-labelledby="requirements-title"><div><h2 id="requirements-title">Built for Linux.<br>Honest about its limits.</h2><p>Straycall uses Linux seccomp user notifications to pause selected syscalls. A separate supervisor checks your policy, then allows or denies each call.</p><p>Reports include Ruby backtraces when available, with a native-library fallback, and can be saved as versioned JSON.</p></div><div class="requirements-details"><h3>Before you run</h3><p>Requires Linux 5.5+ with seccomp user notifications and CONTINUE support, on x86_64 or aarch64, with MRI Ruby 3.1+. Container profiles must permit seccomp.</p><p>On unsupported platforms, non-MRI Ruby, or with <code>STRAYCALL=0</code>, the wrapped command runs normally without enforcement.</p><h3>A guardrail for accidental access</h3><p>Straycall is not a security sandbox for hostile code. Symbolic links, existing file descriptors, and pointer-based policy checks leave gaps.</p><a class="text-link" href="https://github.com/ydah/straycall#known-limitations">Read all limitations</a></div></section>
 
-      <section class="cta" aria-labelledby="cta-title">
-        <p class="kicker">Ready to listen?</p>
-        <h2 id="cta-title">Make unintended calls visible.</h2>
-        <p>Install Straycall and wrap your next Ruby build or test run.</p>
-        <div class="hero-actions">
-          <a class="button button-primary" href="https://rubygems.org/gems/straycall">Install from RubyGems</a>
-          <a class="button button-secondary" href="https://github.com/ydah/straycall">Explore the source</a>
-        </div>
-      </section>
+      <section class="closing shell" aria-labelledby="closing-title"><div><h2 id="closing-title">Meet your test suite’s side effects.</h2><p>Start with one recorded run. See what turns up.</p></div><a class="button button-primary" href="#quick-start">Get started with Straycall</a></section>
     </main>
 
-    <footer>
-      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">S/</span><span>Straycall</span></a>
-      <p>Open source under the MIT License.</p>
-      <div><a href="https://github.com/ydah/straycall">GitHub</a><a href="https://rubygems.org/gems/straycall">RubyGems</a></div>
-    </footer>
+    <footer class="shell"><a class="brand" href="#top">Straycall</a><p>A Ruby gem by <a href="https://github.com/ydah">Yudai Takada</a>.</p><nav aria-label="Footer navigation"><a href="https://github.com/ydah/straycall">GitHub</a><a href="https://rubygems.org/gems/straycall">RubyGems</a><a href="https://github.com/ydah/straycall/blob/main/LICENSE.txt">MIT License</a></nav></footer>
   </body>
 </html>

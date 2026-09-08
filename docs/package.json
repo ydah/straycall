@@ -1,0 +1,11 @@
+{
+  "name": "straycall-site",
+  "private": true,
+  "scripts": {
+    "build": "mkdir -p dist && tailwindcss -i styles.css -o dist/styles.css --minify && cp index.html favicon.svg dist/"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.0",
+    "tailwindcss": "4.3.0"
+  }
+}
