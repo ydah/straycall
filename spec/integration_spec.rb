@@ -166,7 +166,7 @@ RSpec.describe "Linux supervision" do
 
     expect(status).not_to be_success
     expect(violations.map(&:syscall)).to include(:execveat)
-    expect(violations.map { |item| item.target[:path] }).to include("/usr/bin/true")
+    expect(violations.map { |item| item.target[:path] }).to include(File.realpath("/usr/bin/true"))
   end
 
   it "answers concurrent connect notifications without deadlocking" do
